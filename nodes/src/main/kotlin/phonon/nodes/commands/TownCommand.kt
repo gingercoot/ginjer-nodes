@@ -38,6 +38,7 @@ import phonon.nodes.utils.string.filterResident
 import phonon.nodes.utils.string.filterTown
 import phonon.nodes.utils.string.filterTownResident
 import phonon.nodes.utils.stringInputIsValid
+import phonon.nodes.war.Warzone
 
 // list of all subcommands, used for onTabComplete
 private val SUBCOMMANDS: List<String> = listOf(
@@ -661,7 +662,10 @@ public class TownCommand :
             Message.error(player, "That town does not exist")
             return
         }
-
+        if (phonon.nodes.war.Warzone.isWarzoneTown(town)) {
+            Message.error(player, "You cannot join a warzone town")
+            return
+        }
         if (town.isOpen == true) {
             Nodes.addResidentToTown(town, resident)
             Message.print(player, "You are now a resident of ${town.name}!")
@@ -1603,7 +1607,7 @@ public class TownCommand :
         }
 
         if (args.size == 1) {
-            Message.print(player, "Usage: /town rename [new_name]")
+            Message.print(player, "Usage: /n rename [new_name]")
             return
         }
 
@@ -2055,8 +2059,9 @@ public class TownCommand :
             Message.error(player, "You have not occupied this territory")
             return
         }
-        if (territoryTown.home == territory.id && territoryTown.territories.size > 1) {
-            Message.error(player, "You must annex all of this town's other territories before you can annex its home territory")
+        // Warzone: no annex during live event (occupation only; award at end)
+        if (phonon.nodes.war.Warzone.isEnabledWarzoneTown(territoryTown)) {
+            Message.error(player, "Cannot annex warzone territories during an active warzone event")
             return
         }
 

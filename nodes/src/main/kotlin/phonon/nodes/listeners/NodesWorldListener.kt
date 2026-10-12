@@ -35,6 +35,7 @@ import phonon.nodes.Nodes.getRelationshipOfPlayerToTown
 import phonon.nodes.constants.DiplomaticRelationship
 import phonon.nodes.constants.ErrorAlreadyCaptured
 import phonon.nodes.constants.ErrorAlreadyUnderAttack
+import phonon.nodes.constants.ErrorAttackCustomCancel
 import phonon.nodes.constants.ErrorChunkNotEdge
 import phonon.nodes.constants.ErrorFlagTooHigh
 import phonon.nodes.constants.ErrorNoTerritory
@@ -54,18 +55,26 @@ import phonon.nodes.objects.TerritoryChunk
 import phonon.nodes.objects.Town
 import phonon.nodes.war.Attack
 import phonon.nodes.war.FlagWar
+import phonon.nodes.war.Warzone
 import java.util.concurrent.ThreadLocalRandom
 
 public class NodesWorldListener : Listener {
 
-    @EventHandler(priority = EventPriority.NORMAL)
+    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = false)
     public fun onBlockBreak(event: BlockBreakEvent) {
         val player: Player = event.player
         val block: Block = event.block
+        if (phonon.nodes.refinery.Refineries.getByBlock(block) != null) {
+            return
+        }
+        if (phonon.nodes.mining.MiningTowers.isTowerBlock(block)) {
+            return
+        }
         val territoryChunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
 
         // if war enabled, and chunk is being attacked, do flag checks
-        if (Nodes.war.enabled && territoryChunk?.attacker !== null) {
+
+        if (territoryChunk?.attacker !== null) {
             var attack = FlagWar.chunkToAttacker.get(territoryChunk.coord)!!
 
             if (blockInWarFlagNoBuildRegion(block, attack)) {
@@ -180,8 +189,14 @@ public class NodesWorldListener : Listener {
         val player: Player = event.player
 
         // war specific tasks
-        if (Nodes.war.enabled) {
-            val territoryChunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
+        // war / warzone flag tasks
+        val territoryChunkForWar = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
+        val warzoneTown = territoryChunkForWar?.territory?.town
+        val warzoneAttack =
+            warzoneTown != null && Warzone.isAttackableWarzoneTerritory(warzoneTown)
+
+        if (Nodes.war.enabled || warzoneAttack) {
+            val territoryChunk = territoryChunkForWar
             if (territoryChunk !== null) {
                 // disable block placement in flag no build distance
                 if (territoryChunk.attacker !== null) {
@@ -224,12 +239,13 @@ public class NodesWorldListener : Listener {
                                     ErrorAlreadyCaptured -> Message.error(player, "[War] Chunk already captured by town or allies")
                                     ErrorTownBlacklisted -> Message.error(player, "[War] Cannot attack this town (blacklisted)")
                                     ErrorTownNotWhitelisted -> Message.error(player, "[War] Cannot attack this town (not whitelisted)")
-                                    ErrorNotEnemy -> Message.error(player, "[War] Chunk does not belong to an enemy")
+                                    ErrorNotEnemy -> Message.error(player, "[War] Not an enemy (for warzones: /war <warzone_town> first)")
                                     ErrorNotBorderTerritory -> Message.error(player, "[War] You can only attack border territories")
                                     ErrorChunkNotEdge -> Message.error(player, "[War] Must attack from territory edge or from captured chunk")
                                     ErrorFlagTooHigh -> Message.error(player, "[War] Flag placement too high, cannot create flag")
                                     ErrorSkyBlocked -> Message.error(player, "[War] Flag must see the sky")
                                     ErrorTooManyAttacks -> Message.error(player, "[War] You cannot attack any more chunks at the same time")
+                                    ErrorAttackCustomCancel -> Message.error(player, "[War] Attack cancelled by another plugin")
                                 }
 
                                 // cancel event
@@ -264,6 +280,13 @@ public class NodesWorldListener : Listener {
 
             event.setCancelled(true)
             Message.error(player, "You cannot build here!")
+            val chunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
+            if (Config.allowAllInteractsInFlaggedChunks && chunk != null) {
+                if (FlagWar.chunkToAttacker.containsKey(chunk.coord)) {
+                    return // allow interact — do not cancel, do not anti-glitch
+                }
+            }
+            phonon.nodes.util.AntiBlockGlitch.recordDenied(player)
             return
         }
 
@@ -284,8 +307,10 @@ public class NodesWorldListener : Listener {
                 return
             }
 
-            // ignore if war enabled and item in hand is a flag material
-            if (Nodes.war.enabled && Config.flagMaterials.contains(block.type)) {
+            // allow placing war flags during global war OR on an active warzone
+            val placeOnWarzone =
+                phonon.nodes.war.Warzone.isAttackableWarzoneTerritory(town)
+            if ((Nodes.war.enabled || placeOnWarzone) && Config.flagMaterials.contains(block.type)) {
                 return
             }
         }
@@ -454,6 +479,14 @@ public class NodesWorldListener : Listener {
                 if (clickedBlock !== null && INTERACTIVE_BLOCKS.contains(clickedBlock.getType())) {
                     Message.error(player, "You cannot interact here!")
                     event.setUseInteractedBlock(Result.DENY)
+                    val chunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
+                    if (Config.allowAllInteractsInFlaggedChunks && chunk != null) {
+                        if (FlagWar.chunkToAttacker.containsKey(chunk.coord)) {
+                            return // allow interact — do not cancel, do not anti-glitch
+                        }
+                    }
+                    phonon.nodes.util.AntiBlockGlitch.recordDenied(player)
+                    return
                 }
                 return
             }
@@ -477,6 +510,10 @@ public class NodesWorldListener : Listener {
                 }
 
                 event.setCancelled(true)
+                val clicked = event.clickedBlock
+                if (clicked != null && phonon.nodes.mining.MiningTowers.isTowerBlock(clicked)) {
+                    return
+                }
                 Message.error(player, "You cannot use chests here!")
                 return
             }
@@ -498,6 +535,16 @@ public class NodesWorldListener : Listener {
             }
         }
 
+        // allow right-click place of war flag on active warzone / during war
+        val item = event.item
+        val warzoneFlag =
+            phonon.nodes.war.Warzone.isAttackableWarzoneTerritory(town)
+        if (item != null &&
+            Config.flagMaterials.contains(item.type) &&
+            (Nodes.war.enabled || warzoneFlag)
+        ) {
+            return
+        }
         event.setUseInteractedBlock(Result.DENY)
 
         if (event.isBlockInHand()) {
@@ -508,6 +555,16 @@ public class NodesWorldListener : Listener {
 
         if (action == Action.RIGHT_CLICK_BLOCK) {
             Message.error(player, "You cannot interact here!")
+            val clicked = event.clickedBlock
+            if (clicked != null) {
+                // Refineries: public collect GUI only — do not deny / do not message
+                if (phonon.nodes.refinery.Refineries.getByBlock(clicked) != null) {
+                    return
+                }
+                if (phonon.nodes.mining.MiningTowers.isTowerBlock(clicked)) {
+                    return
+                }
+            }
         }
     }
 
@@ -757,7 +814,10 @@ private fun hasTownProtectedChestPermissions(town: Town, player: Resident): Bool
 // bypass permissions and allow all interaction in
 // captured chunks/territories during wartime
 private fun hasWarPermissions(resident: Resident, territory: Territory, territoryChunk: TerritoryChunk): Boolean {
-    if (Nodes.war.enabled) {
+    val warzoneActive =
+        phonon.nodes.war.Warzone.isAttackableWarzoneTerritory(territory.town)
+
+    if (Nodes.war.enabled || warzoneActive) {
         val residentTown = resident.town
         val territoryTown = territory.town
 
@@ -866,7 +926,10 @@ private fun handleHiddenOre(player: Player, block: Block) {
             (Config.allowOreInNationTowns && territoryNation !== null && territoryNation === playerNation) ||
             (Config.allowOreInCaptured && territory.occupier === playerTown)
         ) {
-            val itemDrops = territory.ores.sample(blockY)
+            val baseDrops = territory.ores.sample(blockY)
+            val itemDrops = phonon.nodes.mining.MiningBoost.applyToDrops(player, baseDrops) {
+                territory.ores.sample(blockY)
+            }
 
             // do tax event check
             val territoryOccupier = territory.occupier

@@ -4,9 +4,6 @@
 # Ignore Gradle build output directory
 build
 
-# Ignore Kotlin Gradle plugin compiler state (sessions, etc.)
-.kotlin
-
 # ignore intellij
 .idea
 

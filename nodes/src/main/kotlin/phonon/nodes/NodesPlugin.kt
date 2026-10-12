@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import phonon.nodes.commands.AllyChatCommand
 import phonon.nodes.commands.AllyCommand
 import phonon.nodes.commands.GlobalChatCommand
+import phonon.nodes.commands.MiningTowerCommand
 import phonon.nodes.commands.NationChatCommand
 import phonon.nodes.commands.NationCommand
 import phonon.nodes.commands.NodesAdminCommand
@@ -16,13 +17,18 @@ import phonon.nodes.commands.NodesCommand
 import phonon.nodes.commands.PeaceCommand
 import phonon.nodes.commands.PlayerCommand
 import phonon.nodes.commands.PortCommand
+import phonon.nodes.commands.RefineryCommand
+import phonon.nodes.commands.StatsCommand
 import phonon.nodes.commands.TerritoryCommand
 import phonon.nodes.commands.TownChatCommand
 import phonon.nodes.commands.TownCommand
 import phonon.nodes.commands.TruceCommand
 import phonon.nodes.commands.UnallyCommand
 import phonon.nodes.commands.WarCommand
+import phonon.nodes.commands.WarzoneCommand
+import phonon.nodes.listeners.AntiBlockGlitchListener
 import phonon.nodes.listeners.DisabledWorldListener
+import phonon.nodes.listeners.MiningTowerListener
 import phonon.nodes.listeners.NodesBlockGrowListener
 import phonon.nodes.listeners.NodesChatListener
 import phonon.nodes.listeners.NodesChestProtectionDestroyListener
@@ -40,7 +46,16 @@ import phonon.nodes.listeners.NodesPlayerMoveListener
 import phonon.nodes.listeners.NodesSheepShearListener
 import phonon.nodes.listeners.NodesWarFlagArmorStandListener
 import phonon.nodes.listeners.NodesWorldListener
+import phonon.nodes.listeners.RefineryListener
+import phonon.nodes.listeners.StatsListener
+import phonon.nodes.listeners.WarzoneBossBarListener
+import phonon.nodes.mining.MiningBoost
+import phonon.nodes.mining.MiningTowers
+import phonon.nodes.refinery.Refineries
+import phonon.nodes.refinery.RefineryGuiListener
+import phonon.nodes.stats.PlayerStats
 import phonon.nodes.utils.loadLongFromFile
+import phonon.nodes.war.Warzone
 
 public class NodesPlugin : JavaPlugin() {
 
@@ -118,6 +133,12 @@ public class NodesPlugin : JavaPlugin() {
         pluginManager.registerEvents(NodesNametagListener(), this)
         pluginManager.registerEvents(NodesWarFlagArmorStandListener(), this)
         pluginManager.registerEvents(NodesPlayerDamageListener(), this)
+        pluginManager.registerEvents(StatsListener(), this)
+        pluginManager.registerEvents(RefineryListener(), this)
+        pluginManager.registerEvents(RefineryGuiListener(), this)
+        pluginManager.registerEvents(MiningTowerListener(), this)
+        pluginManager.registerEvents(AntiBlockGlitchListener(), this)
+        pluginManager.registerEvents(WarzoneBossBarListener(), this)
 
         // register commands
         this.getCommand("town")?.setExecutor(TownCommand())
@@ -127,6 +148,8 @@ public class NodesPlugin : JavaPlugin() {
         this.getCommand("ally")?.setExecutor(AllyCommand())
         this.getCommand("unally")?.setExecutor(UnallyCommand())
         this.getCommand("war")?.setExecutor(WarCommand())
+        this.getCommand("warzone")?.setExecutor(WarzoneCommand())
+        this.getCommand("warzone")?.setTabCompleter(WarzoneCommand())
         this.getCommand("peace")?.setExecutor(PeaceCommand())
         this.getCommand("truce")?.setExecutor(TruceCommand())
         this.getCommand("globalchat")?.setExecutor(GlobalChatCommand())
@@ -136,7 +159,16 @@ public class NodesPlugin : JavaPlugin() {
         this.getCommand("player")?.setExecutor(PlayerCommand())
         this.getCommand("territory")?.setExecutor(TerritoryCommand())
         this.getCommand("port")?.setExecutor(PortCommand())
-
+        this.getCommand("miningtower")?.setExecutor(MiningTowerCommand())
+        this.getCommand("miningtower")?.setTabCompleter(MiningTowerCommand())
+        val refineryCmd = RefineryCommand()
+        this.getCommand("refinery")?.setExecutor(refineryCmd)
+        this.getCommand("refinery")?.setTabCompleter(refineryCmd)
+        val statsCmd = StatsCommand()
+        this.getCommand("stats")?.setExecutor(statsCmd)
+        this.getCommand("stats")?.setTabCompleter(statsCmd)
+        this.getCommand("leaderboard")?.setExecutor(statsCmd)
+        this.getCommand("leaderboard")?.setTabCompleter(statsCmd)
         // override command aliases tab complete if they exist
         this.getCommand("t")?.setTabCompleter(this.getCommand("town")?.getExecutor() as TabCompleter)
         this.getCommand("n")?.setTabCompleter(this.getCommand("nation")?.getExecutor() as TabCompleter)
@@ -144,6 +176,8 @@ public class NodesPlugin : JavaPlugin() {
         this.getCommand("nda")?.setTabCompleter(this.getCommand("nodesadmin")?.getExecutor() as TabCompleter)
         this.getCommand("gc")?.setTabCompleter(this.getCommand("globalchat")?.getExecutor() as TabCompleter)
         this.getCommand("p")?.setTabCompleter(this.getCommand("player")?.getExecutor() as TabCompleter)
+        this.getCommand("miningtower")?.setExecutor(MiningTowerCommand())
+        this.getCommand("miningtower")?.setTabCompleter(MiningTowerCommand())
 
         // load current income tick
         val currTime = System.currentTimeMillis()
@@ -160,6 +194,11 @@ public class NodesPlugin : JavaPlugin() {
         // set final initialized flag
         Nodes.initialized = true
         Nodes.enabled = true
+        Warzone.load()
+        MiningBoost.load()
+        MiningTowers.load()
+        PlayerStats.load()
+        Refineries.load()
 
         // print load time
         val timeEnd = System.currentTimeMillis()
@@ -167,17 +206,21 @@ public class NodesPlugin : JavaPlugin() {
         logger.info("Enabled in ${timeLoad}ms")
 
         // print success message
-        logger.info("now this is epic")
+        logger.info("ginjer is the goat")
     }
 
     override fun onDisable() {
-        logger.info("wtf i hate xeth now")
+        logger.info("ginjer is the goat but disabled")
+        Warzone.shutdown()
+        MiningBoost.shutdown()
+        MiningTowers.shutdown()
+        PlayerStats.shutdown()
+        Refineries.shutdown()
 
         Nodes.enabled = false
 
         // world cleanup
         Nodes.cleanup()
-
         // final synchronous save of world
         // -> only save when world was properly initialized,
         //    to avoid saving junk empty data when plugin fails load

@@ -601,7 +601,7 @@ public object Nodes {
                 val nationsSnapshot = Nodes.nations.values.map { it.getSaveState() }
 
                 // whether should copy towns.json to dynmap folder
-                val copyToDynmap = Nodes.dynmap || Config.dynmapCopyTowns
+                val copyToDynmap = Config.dynmapCopyTowns
 
                 // save task manages:
                 // 1. serialize individual objects into json strings and combine into a full json string
@@ -687,33 +687,34 @@ public object Nodes {
      * Should run when plugin enabled.
      */
     internal fun saveWorldToDynmap(async: Boolean) {
-        // copy towns to dynmap folder
-        if (Nodes.dynmap || Config.dynmapCopyTowns) {
-            val taskSaveClaimsConfig = TaskSaveDynmapClaimsConfig(
-                Config.territoryCostBase,
-                Config.territoryCostScale,
-                DYNMAP_PATH_NODES_CONFIG,
-            )
-            val taskSaveTowns = TaskCopyToDynmap(
-                Config.pathTowns,
-                Nodes.DYNMAP_DIR,
-                Nodes.DYNMAP_PATH_TOWNS,
-            )
-            val taskSavePorts = TaskCopyToDynmap(
-                Config.pathPorts,
-                Nodes.DYNMAP_DIR,
-                Nodes.DYNMAP_PATH_TOWNS,
-            )
+        if (!Config.dynmapCopyTowns) {
+            return
+        }
 
-            if (async) {
-                Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, taskSaveClaimsConfig)
-                Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, taskSaveTowns)
-                Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, taskSavePorts)
-            } else {
-                taskSaveClaimsConfig.run()
-                taskSaveTowns.run()
-                taskSavePorts.run()
-            }
+        val taskSaveClaimsConfig = TaskSaveDynmapClaimsConfig(
+            Config.territoryCostBase,
+            Config.territoryCostScale,
+            DYNMAP_PATH_NODES_CONFIG,
+        )
+        val taskSaveTowns = TaskCopyToDynmap(
+            Config.pathTowns,
+            Nodes.DYNMAP_DIR,
+            Nodes.DYNMAP_PATH_TOWNS,
+        )
+        val taskSavePorts = TaskCopyToDynmap(
+            Config.pathPorts,
+            Nodes.DYNMAP_DIR,
+            Nodes.DYNMAP_PATH_PORTS, // FIXED — was DYNMAP_PATH_TOWNS
+        )
+
+        if (async) {
+            Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, taskSaveClaimsConfig)
+            Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, taskSaveTowns)
+            Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, taskSavePorts)
+        } else {
+            taskSaveClaimsConfig.run()
+            taskSaveTowns.run()
+            taskSavePorts.run()
         }
     }
 
@@ -1236,10 +1237,15 @@ public object Nodes {
             return null
         }
 
-        // get spawn point
-        val spawnpoint = if (spawn != null) {
-            spawn
-        } else { // get default value
+        // get spawn point — treat null or 0,0,0 as unset (editor default)
+        val spawnIsUnset = spawn == null ||
+            (
+                spawn.blockX == 0 && spawn.blockZ == 0 && spawn.blockY == 0
+                )
+
+        val spawnpoint = if (!spawnIsUnset) {
+            spawn!!
+        } else {
             val homeTerritory = Nodes.territories.get(TerritoryId(homeId))
             if (homeTerritory != null) {
                 Nodes.getDefaultSpawnLocation(homeTerritory)
@@ -1763,13 +1769,26 @@ public object Nodes {
         // remove from old town
         if (oldTown !== null) {
             // check if this is their home territory
-            if (territory.id == oldTown.home) {
-                // can only annex home territory last
-                if (oldTown.territories.size > 1) {
-                    return false
-                }
+            if (territory.id == oldTown.home && !phonon.nodes.war.Warzone.isWarzoneTown(oldTown)) { // Capturing home annexes the entire town: transfer all territories, then destroy the town.
+                val territoriesToTransfer = oldTown.territories.toList()
 
-                // destroy town and broadcast
+                for (terrId in territoriesToTransfer) {
+                    val t = Nodes.getTerritoryFromId(terrId) ?: continue
+                    if (t.town !== oldTown) continue
+
+                    oldTown.territories.remove(terrId)
+                    oldTown.annexed.remove(terrId)
+                    oldTown.captured.remove(terrId)
+
+                    town.territories.add(terrId)
+                    town.annexed.add(terrId)
+                    town.captured.remove(terrId)
+
+                    t.town = town
+                    t.occupier = null
+                }
+                town.claimsMax = Nodes.calculateMaxClaims(town)
+
                 Nodes.destroyTown(oldTown)
 
                 Message.broadcast("${ChatColor.DARK_RED}${ChatColor.BOLD}Town ${oldTown.name} was completely annexed by ${town.name}")

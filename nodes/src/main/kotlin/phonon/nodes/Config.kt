@@ -334,6 +334,67 @@ public object Config {
     public var flagBeaconMinSkyLevel: Int = 100 // minimum height level in sky
     public var flagBeaconSkyLevel: Int = 50 // height level above blocks
 
+    /** If false, skip sky beacon create/restore (big lag win under many caps). */
+    public var flagBeaconEnabled: Boolean = false
+
+    /** Lighting updates when placing beacons (expensive). Keep false. */
+    public var flagBeaconUpdateLighting: Boolean = false
+
+    /** If false, no armor-stand cap holograms (boss bar only). */
+    public var flagHologramsEnabled: Boolean = true
+
+    /** Hard cap on simultaneous attacks server-wide (0 = unlimited). */
+    public var maxConcurrentAttacks: Int = 0
+
+    /** Max active attacks started by one town (0 = unlimited). */
+    public var maxAttacksPerTown: Int = 0
+
+    // --- Fork: war extras ---
+    /** When true, more players in flagged chunk shortens attack time. Default off. */
+    public var playersInChunkMultiplier: Boolean = false
+    public var playersInChunkMultiplierPerPlayer: Double = 0.05
+    public var playersInChunkMultiplierMin: Double = 0.5
+
+    /**
+     * When true, cancel PvP only between players in the SAME town.
+     * Nation members and allies can still friendly-fire.
+     */
+    public var noFriendlyFire: Boolean = false
+
+    public var allowUnownedAttack: Boolean = true
+    public var allowBorderSkirmishFromWilderness: Boolean = true
+    public var allowAllInteractsInFlaggedChunks: Boolean = true
+
+    public var staticFlagblock: Boolean = true
+    public var staticFlagblockMaterial: Material = Material.DEEPSLATE
+
+    /** Denied interact/place attempts before poison+darkness. 0 = off. */
+    public var antiBlockGlitchAttempts: Int = 4
+    public var antiBlockGlitchDurationTicks: Int = 60
+
+    /**
+     * When true, only players in towns listed in [warPlayerWhiteListTowns] may stay online.
+     * Default off.
+     */
+    public var warPlayerWhiteList: Boolean = false
+    public var warPlayerWhiteListTowns: HashSet<UUID> = hashSetOf()
+    public var whitelistDenyCommand: String = "kick %player% Not on the war whitelist"
+
+    /** 0 = always skulls, 1 = no skulls during war, 2 = never. */
+    public var skullsGUIToggle: Int = 1
+
+    /**
+     * Cooldown (ms) before joining a town in a different nation after leave/kick.
+     * -1 = disabled.
+     */
+    public var nationJoinCooldown: Long = -1L
+
+    /**
+     * Only players within this many chunks of the flag get the attack boss bar.
+     * 0 = all online players (old behavior).
+     */
+    public var warBossBarMaxDistanceChunks: Int = 6
+
     // allow war permissions during skirmish mode
     public var allowDestructionDuringSkirmish: Boolean = false
 
@@ -398,6 +459,14 @@ public object Config {
     public var seaLevel: Double = 62.0
     public var portWarpTime: Double = 5.0 * 20.0 // in ticks
     public var allowPortWarpWithoutBoat: Boolean = false
+
+    // ===================================
+    // Discord webhooks (empty = disabled)
+    // ===================================
+    public var discordWebhookFlagWar: String = ""
+    public var discordWebhookWar: String = ""
+    public var discordRelayFlagWar: Boolean = true
+    public var discordRelayWar: Boolean = true
 
     // ===================================================
     // Load config
@@ -514,8 +583,52 @@ public object Config {
         Config.flagBeaconSize = config.getInt("flagBeaconSize", Config.flagBeaconSize)
         Config.flagBeaconMinSkyLevel = config.getInt("flagBeaconMinSkyLevel", Config.flagBeaconMinSkyLevel)
         Config.flagBeaconSkyLevel = config.getInt("flagBeaconSkyLevel", Config.flagBeaconSkyLevel)
+        Config.flagBeaconEnabled = config.getBoolean("flagBeaconEnabled", Config.flagBeaconEnabled)
+        Config.flagBeaconUpdateLighting = config.getBoolean("flagBeaconUpdateLighting", Config.flagBeaconUpdateLighting)
+        Config.flagHologramsEnabled = config.getBoolean("flagHologramsEnabled", Config.flagHologramsEnabled)
+        Config.maxConcurrentAttacks = config.getInt("maxConcurrentAttacks", Config.maxConcurrentAttacks)
+        Config.maxAttacksPerTown = config.getInt("maxAttacksPerTown", Config.maxAttacksPerTown)
+        Config.warBossBarMaxDistanceChunks = config.getInt("warBossBarMaxDistanceChunks", Config.warBossBarMaxDistanceChunks)
         Config.onlyAllowExplosionsDuringWar = config.getBoolean("onlyAllowExplosionsDuringWar", Config.onlyAllowExplosionsDuringWar)
         Config.warPermissions = config.getBoolean("warPermissions", Config.warPermissions)
+        // Fork: war performance
+        Config.flagBeaconEnabled = config.getBoolean("flagBeaconEnabled", Config.flagBeaconEnabled)
+        Config.flagBeaconUpdateLighting = config.getBoolean("flagBeaconUpdateLighting", Config.flagBeaconUpdateLighting)
+        Config.flagHologramsEnabled = config.getBoolean("flagHologramsEnabled", Config.flagHologramsEnabled)
+        Config.maxConcurrentAttacks = config.getInt("maxConcurrentAttacks", Config.maxConcurrentAttacks)
+        Config.maxAttacksPerTown = config.getInt("maxAttacksPerTown", Config.maxAttacksPerTown)
+        Config.warBossBarMaxDistanceChunks = config.getInt("warBossBarMaxDistanceChunks", Config.warBossBarMaxDistanceChunks)
+
+        // Fork: war extras
+        Config.playersInChunkMultiplier = config.getBoolean("playersInChunkMultiplier", Config.playersInChunkMultiplier)
+        Config.playersInChunkMultiplierPerPlayer = config.getDouble("playersInChunkMultiplierPerPlayer", Config.playersInChunkMultiplierPerPlayer)
+        Config.playersInChunkMultiplierMin = config.getDouble("playersInChunkMultiplierMin", Config.playersInChunkMultiplierMin)
+
+        Config.noFriendlyFire = config.getBoolean("noFriendlyFire", Config.noFriendlyFire)
+
+        Config.allowUnownedAttack = config.getBoolean("allowUnownedAttack", Config.allowUnownedAttack)
+        Config.allowBorderSkirmishFromWilderness = config.getBoolean("allowBorderSkirmishFromWilderness", Config.allowBorderSkirmishFromWilderness)
+        Config.allowAllInteractsInFlaggedChunks = config.getBoolean("allowAllInteractsInFlaggedChunks", Config.allowAllInteractsInFlaggedChunks)
+
+        Config.staticFlagblock = config.getBoolean("staticFlagblock", Config.staticFlagblock)
+        val flagMatName = config.getString("staticFlagblockMaterial", Config.staticFlagblockMaterial.name)
+        val flagMat = flagMatName?.let { Material.matchMaterial(it) }
+        if (flagMat != null) {
+            Config.staticFlagblockMaterial = flagMat
+        }
+
+        Config.antiBlockGlitchAttempts = config.getInt("antiBlockGlitchAttempts", Config.antiBlockGlitchAttempts)
+        Config.antiBlockGlitchDurationTicks = config.getInt("antiBlockGlitchDurationTicks", Config.antiBlockGlitchDurationTicks)
+
+        Config.warPlayerWhiteList = config.getBoolean("warPlayerWhiteList", Config.warPlayerWhiteList)
+        Config.warPlayerWhiteListTowns = parseUUIDSet(config, "warPlayerWhiteListTowns")
+        Config.whitelistDenyCommand = config.getString("whitelistDenyCommand", Config.whitelistDenyCommand)
+            ?: Config.whitelistDenyCommand
+
+        Config.skullsGUIToggle = config.getInt("skullsGUIToggle", Config.skullsGUIToggle)
+
+        // duration: number (ms) or keep -1 disabled; optional string later
+        Config.nationJoinCooldown = config.getLong("nationJoinCooldown", Config.nationJoinCooldown)
 
         Config.allowDestructionDuringSkirmish = config.getBoolean("allowDestructionDuringSkirmish", Config.allowDestructionDuringSkirmish)
         Config.canLeaveTownDuringWar = config.getBoolean("canLeaveTownDuringWar", Config.canLeaveTownDuringWar)
@@ -546,6 +659,20 @@ public object Config {
         Config.seaLevel = config.getDouble("seaLevel", Config.seaLevel)
         Config.portWarpTime = config.getDouble("portWarpTime", Config.portWarpTime) * 20.0 // time is in seconds, convert to ticks
         Config.allowPortWarpWithoutBoat = config.getBoolean("allowPortWarpWithoutBoat", Config.allowPortWarpWithoutBoat)
+
+        // discord
+        Config.discordWebhookFlagWar = config.getString("discordWebhookFlagWar", Config.discordWebhookFlagWar)?.trim() ?: ""
+        Config.discordWebhookWar = config.getString("discordWebhookWar", Config.discordWebhookWar)?.trim() ?: ""
+        Config.discordRelayFlagWar = config.getBoolean("discordRelayFlagWar", Config.discordRelayFlagWar)
+        Config.discordRelayWar = config.getBoolean("discordRelayWar", Config.discordRelayWar)
+
+        if (config.isString("nationJoinCooldown")) {
+            val raw = config.getString("nationJoinCooldown")
+            if (raw != null && raw.trim() == "-1") {
+                Config.nationJoinCooldown = -1L
+            } else {
+            }
+        }
     }
 }
 

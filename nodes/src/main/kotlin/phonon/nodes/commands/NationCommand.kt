@@ -29,6 +29,7 @@ import phonon.nodes.utils.stringInputIsValid
 // list of all subcommands, used for onTabComplete
 private val subcommands: List<String> = listOf(
     "help",
+    "announce",
     "create",
     "new",
     "delete",
@@ -51,6 +52,49 @@ public class NationCommand :
     CommandExecutor,
     TabCompleter {
 
+    /**
+     * @command /nation announce <message>
+     * Title + chat to all online members of your nation.
+     * Nation capital leader or capital officers only.
+     */
+    private fun nationAnnounce(player: Player?, args: Array<String>) {
+        if (player == null) {
+            return
+        }
+        if (args.size < 2) {
+            Message.error(player, "Usage: /n announce <message>")
+            return
+        }
+
+        val resident = Nodes.getResident(player) ?: return
+        val nation = resident.nation
+        if (nation == null) {
+            Message.error(player, "You are not in a nation")
+            return
+        }
+
+        val capital = nation.capital
+        val isLeader = resident === capital.leader
+        val isOfficer = capital.officers.contains(resident)
+        if (!isLeader && !isOfficer) {
+            Message.error(player, "Only the nation leader or capital officers can announce")
+            return
+        }
+
+        val raw = args.drop(1).joinToString(" ")
+        val msg = ChatColor.translateAlternateColorCodes('&', raw)
+        val title = "${ChatColor.GOLD}${ChatColor.BOLD}[${nation.name}]"
+
+        var count = 0
+        for (p in nation.playersOnline) {
+            p.sendTitle(title, msg, 10, 70, 20)
+            p.sendMessage("${ChatColor.GOLD}[${nation.name}] ${ChatColor.WHITE}$msg")
+            count++
+        }
+
+        Message.print(player, "Announced to $count nation member(s)")
+    }
+
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
         val player = if (sender is Player) sender else null
 
@@ -70,6 +114,7 @@ public class NationCommand :
         // parse subcommand
         when (args[0].lowercase()) {
             "help" -> printHelp(sender)
+            "announce" -> nationAnnounce(player, args)
             "create" -> createNation(player, args)
             "new" -> createNation(player, args)
             "delete" -> deleteNation(player)
@@ -145,6 +190,7 @@ public class NationCommand :
 
     private fun printHelp(sender: CommandSender) {
         Message.print(sender, "${ChatColor.BOLD}[Nodes] Nation commands:")
+        Message.print(sender, "/nation announce <msg>${ChatColor.WHITE}: Announce to your nation (leader/officers)")
         Message.print(sender, "/nation create${ChatColor.WHITE}: Create nation with name at location")
         Message.print(sender, "/nation delete${ChatColor.WHITE}: Delete your nation")
         Message.print(sender, "/nation leave${ChatColor.WHITE}: Leave your nation")

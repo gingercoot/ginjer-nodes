@@ -188,6 +188,7 @@ class NodesTown {
      */
     export() {
         return Object.assign({}, this.original, {
+            name: this.name,
             uuid: this.uuid,
             color: this.colorTown,
             open: this.open,
@@ -1674,11 +1675,14 @@ const Nodes = {
 
         // remove old town in towns map
         if ( Nodes.towns.delete(town.name) !== true ) {
-            console.error (`Failed to delete old town named ${town.name} from towns map`);
+            console.error(`Failed to delete old town named ${town.name} from towns map`);
             return;
         }
 
         town.name = newTownName;
+        if ( town.original ) {
+            town.original.name = newTownName;
+        }
         Nodes.towns.set(newTownName, town);
 
         // update towns list
@@ -1690,7 +1694,7 @@ const Nodes = {
         }
 
         // re-render
-        Nodes.renderEditor()
+        Nodes.renderEditor();
     },
 
     /**

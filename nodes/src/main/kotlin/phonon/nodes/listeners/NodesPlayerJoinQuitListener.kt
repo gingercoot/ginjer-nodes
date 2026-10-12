@@ -14,7 +14,9 @@ import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import phonon.nodes.Nodes
 import phonon.nodes.chat.Chat
+import phonon.nodes.mining.MiningBoost
 import phonon.nodes.objects.Resident
+import phonon.nodes.war.WarTimer
 
 public class NodesPlayerJoinQuitListener : Listener {
 
@@ -24,7 +26,8 @@ public class NodesPlayerJoinQuitListener : Listener {
         // createResident checks if resident already exists
         val player: Player = event.getPlayer()
         Nodes.createResident(player)
-
+        phonon.nodes.mining.MiningBoost.onJoin(player)
+        phonon.nodes.war.WarTimer.onPlayerJoin(player)
         val resident: Resident = Nodes.getResident(player)!!
         Nodes.setResidentOnline(resident, player)
 
@@ -32,6 +35,7 @@ public class NodesPlayerJoinQuitListener : Listener {
         if (Nodes.war.enabled == true) {
             Nodes.war.sendWarProgressBarToPlayer(player)
         }
+        phonon.nodes.war.WarTimer.onPlayerJoin(player)
     }
 
     @EventHandler
@@ -41,6 +45,8 @@ public class NodesPlayerJoinQuitListener : Listener {
         if (resident != null) {
             resident.destroyMinimap()
             Nodes.setResidentOffline(resident, player)
+            phonon.nodes.mining.MiningBoost.onQuit(player)
+            phonon.nodes.war.WarTimer.onPlayerQuit(player)
         }
 
         // remove player from muting global chat

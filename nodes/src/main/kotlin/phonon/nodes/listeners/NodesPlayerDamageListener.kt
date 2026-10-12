@@ -21,7 +21,12 @@ public class NodesPlayerDamageListener : Listener {
         // if relationship is ally, town or nation, and config specifies it, cancel event and notify attacker
         val relationship = getRelationshipOfPlayerToPlayer(victim, attacker)
         val (cancel, message) = when (relationship) {
-            DiplomaticRelationship.TOWN, DiplomaticRelationship.NATION -> {
+            DiplomaticRelationship.TOWN -> {
+                // Same town only — Config.noFriendlyFire (true = cannot FF townmates)
+                val cancelled = Config.noFriendlyFire
+                cancelled to if (cancelled) "You cannot attack members of your town" else ""
+            }
+            DiplomaticRelationship.NATION -> {
                 val cancelled = !Config.allowNationFriendlyFire
                 cancelled to if (cancelled) "You cannot attack members of your nation" else ""
             }
@@ -32,6 +37,12 @@ public class NodesPlayerDamageListener : Listener {
             else -> false to ""
         }
 
+        if (cancel) {
+            event.isCancelled = true
+            if (message.isNotEmpty()) {
+                Message.error(attacker, message) // or whatever you already use
+            }
+        }
         if (cancel) {
             event.setCancelled(true)
             Message.error(attacker, message)

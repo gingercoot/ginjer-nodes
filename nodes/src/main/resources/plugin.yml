@@ -8,7 +8,7 @@ commands:
     description: Admin commands for Nodes
     aliases: [nda]
     permission: nodes.admin
-    usage: /nodesadmin help or /nda help
+    usage: /nodesadmin help or /na help
   town:
     description: Manage player towns (Nodes)
     aliases: [t]
@@ -28,27 +28,27 @@ commands:
     description: Make alliance with another town/nation
     aliases: []
     permission: nodes.command.ally
-    usage: /ally <town> or /ally <nation>
+    usage: /ally help
   unally:
     description: Break alliance with another town/nation
     aliases: []
     permission: nodes.command.unally
-    usage: /unally <town> or /unally <nation>
+    usage: /unally help
   war:
     description: Declare war on another town/nation
     aliases: []
     permission: nodes.command.war
-    usage: /war <town> or /war <nation>
+    usage: /war help
   peace:
     description: Request peace with another town/nation
     aliases: []
     permission: nodes.command.peace
-    usage: /peace <town> or /peace <nation>
+    usage: /peace help
   truce:
     description: View truce list and times remaining
     aliases: []
     permission: nodes.command.truce
-    usage: /truce [town]
+    usage: /peace help
   globalchat:
     description: Set player chat to global
     aliases: [gc]
@@ -84,6 +84,44 @@ commands:
     aliases: []
     permission: nodes.command.port
     usage: /port help
+  warzone:
+    description: Warzone commands
+    aliases: [wz]
+    usage: /warzone help
+    permission:
+      nodes.warzone.status:
+      description: View warzone status/scores
+      default: true
+    nodes.warzone.admin:
+      description: Create/enable/disable/remove warzones
+      default: op
+  miningtower:
+    description: Place and manage mining towers
+    aliases: [ mt ]
+    permission: nodes.admin
+    usage: /mt help
+  refinery:
+    description: Manage and use refineries
+    aliases: [ rf, refineries ]
+    usage: /refinery help
+  stats:
+    description: View kill/death stats
+    aliases: [kdr]
+    usage: /stats [player]
+  leaderboard:
+    description: KDR leaderboards
+    aliases: [lb]
+    usage: /leaderboard <kills|deaths|kdr|towns|nations>
+    permission:
+      nodes.stats.self:
+        description: View own stats
+        default: true
+        nodes.stats.other:
+          description: View other players stats
+          default: true
+        nodes.stats.admin:
+          description: Reset stats
+          default: op
 permissions:
   nodes.command.town.fly:
     default: op

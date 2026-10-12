@@ -24,6 +24,8 @@ import phonon.nodes.Message
 import phonon.nodes.Nodes
 import phonon.nodes.Nodes.addPortToGroup
 import phonon.nodes.Nodes.removePortFromGroup
+import phonon.nodes.commands.MiningTowerCommand
+import phonon.nodes.mining.MiningBoost
 import phonon.nodes.objects.Coord
 import phonon.nodes.objects.Resident
 import phonon.nodes.objects.Territory
@@ -44,6 +46,7 @@ import phonon.nodes.utils.stringInputIsValid
 import phonon.nodes.war.Treaty
 import phonon.nodes.war.TreatyTermItems
 import phonon.nodes.war.TreatyTermOccupation
+import phonon.nodes.war.WarTimer
 import kotlin.getOrElse
 import kotlin.math.roundToInt
 
@@ -69,6 +72,9 @@ private val SUBCOMMANDS: List<String> = listOf(
     "runincome",
     "playersonline",
     "debug",
+    "miningboost",
+    "stats",
+    "announce",
 )
 
 private val RELOAD_SUBCOMMANDS: List<String> = listOf(
@@ -158,6 +164,109 @@ private val DEBUG_SUBCOMMANDS: List<String> = listOf(
 public class NodesAdminCommand :
     CommandExecutor,
     TabCompleter {
+    private fun miningBoost(sender: CommandSender, args: Array<String>) {
+        if (args.size < 2) {
+            Message.print(sender, "/nda miningboost global <duration> [tier]")
+            Message.print(sender, "/nda miningboost player <name> <duration> [tier]")
+            Message.print(sender, "/nda miningboost clear global")
+            Message.print(sender, "/nda miningboost clear player <name>")
+            Message.print(sender, "No tier → +1 (max ${MiningBoost.MAX_TIER}). Time stacks if already active.")
+            return
+        }
+        when (args[1].lowercase()) {
+            "global" -> {
+                if (args.size < 3) {
+                    Message.error(sender, "Usage: /nda miningboost global <duration> [tier]")
+                    return
+                }
+                val dur = MiningBoost.parseDurationMs(args[2])
+                if (dur == null) {
+                    Message.error(sender, "Invalid duration (e.g. 30m, 2h)")
+                    return
+                }
+                if (args.size >= 4) {
+                    val tier = args[3].toIntOrNull()
+                    if (tier == null || tier < 1 || tier > MiningBoost.MAX_TIER) {
+                        Message.error(sender, "Tier must be 1–${MiningBoost.MAX_TIER}")
+                        return
+                    }
+                    MiningBoost.setGlobal(tier, dur, sender.name)
+                } else {
+                    MiningBoost.bumpGlobal(dur, sender.name)
+                }
+            }
+            "player" -> {
+                if (args.size < 4) {
+                    Message.error(sender, "Usage: /nda miningboost player <name> <duration> [tier]")
+                    return
+                }
+                val offline = Bukkit.getOfflinePlayer(args[2])
+                val dur = MiningBoost.parseDurationMs(args[3])
+                if (dur == null) {
+                    Message.error(sender, "Invalid duration (e.g. 30m, 2h, 1d)")
+                    return
+                }
+                if (args.size >= 5) {
+                    val tier = args[4].toIntOrNull()
+                    // ===== B3 GOES HERE =====
+                    if (tier == null || tier < 1 || tier > MiningBoost.MAX_TIER) {
+                        Message.error(sender, "Tier must be 1–${MiningBoost.MAX_TIER}")
+                        return
+                    }
+                    // ===== then setPlayer =====
+                    MiningBoost.setPlayer(
+                        offline.uniqueId,
+                        args[2],
+                        tier,
+                        dur,
+                        sender.name,
+                    )
+                    Message.print(sender, "Player mining boost for ${args[2]} set to tier $tier")
+                } else {
+                    MiningBoost.bumpPlayer(
+                        offline.uniqueId,
+                        args[2],
+                        dur,
+                        sender.name,
+                    )
+                    Message.print(sender, "Player mining boost for ${args[2]} tier +1")
+                }
+            }
+            "clear" -> {
+                if (args.size < 3) {
+                    Message.error(sender, "Usage: /nda miningboost clear global|player <name>")
+                    return
+                }
+                when (args[2].lowercase()) {
+                    "global" -> MiningBoost.clearGlobal()
+                    "player" -> {
+                        if (args.size < 4) {
+                            Message.error(sender, "Usage: /nda miningboost clear player <name>")
+                            return
+                        }
+                        MiningBoost.clearPlayer(Bukkit.getOfflinePlayer(args[3]).uniqueId)
+                        Message.print(sender, "Cleared boost for ${args[3]}")
+                    }
+                    else -> Message.error(sender, "Use: clear global OR clear player <name>")
+                }
+            }
+            else -> Message.error(sender, "Use: miningboost global|player|clear")
+        }
+    }
+    private fun adminStats(sender: CommandSender, args: Array<String>) {
+        if (!sender.hasPermission("nodes.stats.admin") && !sender.isOp) {
+            Message.error(sender, "No permission")
+            return
+        }
+        // /nda stats reset <player>
+        if (args.size >= 3 && args[1].equals("reset", ignoreCase = true)) {
+            val offline = org.bukkit.Bukkit.getOfflinePlayer(args[2])
+            phonon.nodes.stats.PlayerStats.reset(offline.uniqueId)
+            Message.print(sender, "Reset stats for ${args[2]}")
+            return
+        }
+        Message.print(sender, "Usage: /nda stats reset <player>")
+    }
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
         // no args, print plugin info
@@ -172,6 +281,9 @@ public class NodesAdminCommand :
             "help" -> printHelp(sender)
             "reload" -> reload(sender, args)
             "war" -> war(sender, args)
+            "miningboost" -> miningBoost(sender, args)
+            "stats" -> adminStats(sender, args)
+            "announce" -> adminAnnounce(sender, args)
             "resident" -> manageResident(sender, args)
             "town" -> manageTown(sender, args)
             "port" -> managePort(sender, args)
@@ -212,10 +324,40 @@ public class NodesAdminCommand :
                     }
                 }
 
+                "stats" -> {
+                    if (args.size == 2) {
+                        return filterByStart(listOf("reset"), args[1])
+                    }
+                }
+
                 // /nodesadmin war enable/disable
                 "war" -> {
                     if (args.size == 2) {
                         return filterByStart(WAR_SUBCOMMANDS, args[1])
+                    }
+                }
+                "miningboost" -> {
+                    if (args.size == 2) {
+                        return filterByStart(listOf("global", "player", "clear"), args[1])
+                    }
+                    if (args.size == 3) {
+                        when (args[1].lowercase()) {
+                            "player" -> return filterPlayer(args[2])
+                            "clear" -> return filterByStart(listOf("global", "player"), args[2])
+                            // global: duration free-text
+                        }
+                    }
+                    if (args.size == 4) {
+                        when (args[1].lowercase()) {
+                            "player" -> {
+                                // duration free-text after name
+                            }
+                            "clear" -> {
+                                if (args[2].equals("player", ignoreCase = true)) {
+                                    return filterPlayer(args[3])
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -493,6 +635,9 @@ public class NodesAdminCommand :
         Message.print(sender, "/nodesadmin load${ChatColor.WHITE}: Force load world")
         Message.print(sender, "/nodesadmin runincome${ChatColor.WHITE}: Runs income for all towns")
         Message.print(sender, "/nodesadmin debug${ChatColor.WHITE}: World object debugger")
+        Message.print(sender, "/nodesadmin miningboost${ChatColor.WHITE}: Mining rate/amount boosts")
+        Message.print(sender, "/nodesadmin stats reset <player>${ChatColor.WHITE}: Reset K/D stats")
+        Message.print(sender, "/nodesadmin announce <message>${ChatColor.WHITE}: Announce for all players")
         return
     }
 
@@ -583,7 +728,7 @@ public class NodesAdminCommand :
         // print general war state
         if (args.size < 2) {
             Nodes.war.printInfo(sender, true)
-            Message.print(sender, "Toggle state: \"/nodesadmin war [enable|disable]\"")
+            Message.print(sender, "Usage: /nda war enable [duration] | skirmish [duration] | disable")
         }
         // war subcommands
         else {
@@ -591,29 +736,75 @@ public class NodesAdminCommand :
             // full war: allow annex, can attack any territory
             when (function) {
                 "enable" -> {
-                    Nodes.enableWar(true, false, true)
-                    Message.broadcast("${ChatColor.DARK_RED}${ChatColor.BOLD}Nodes war enabled")
+                    val durationMs = if (args.size >= 3) {
+                        phonon.nodes.mining.MiningBoost.parseDurationMs(args[2])
+                            ?: run {
+                                Message.error(sender, "Invalid duration (e.g. 72h, 2h, 90m)")
+                                return
+                            }
+                    } else {
+                        null
+                    }
 
-                    // play MENACING wither spawn sound
+                    Nodes.enableWar(true, false, true)
+                    phonon.nodes.stats.WarStats.startWarSession(fullWar = true)
+
+                    if (durationMs != null) {
+                        phonon.nodes.war.WarTimer.scheduleDisable(durationMs, "War time expired")
+                        phonon.nodes.util.DiscordRelay.war("**[War]** Nodes war **disabled** (timer ended)")
+
+                        Message.broadcast(
+                            "${ChatColor.DARK_RED}${ChatColor.BOLD}Nodes war enabled for ${args[2]}",
+                        )
+                        val durationLabel = args[2]
+                        phonon.nodes.util.DiscordRelay.war(
+                            "**[War]** Nodes war **enabled** for **$durationLabel**",
+                        )
+                    } else {
+                        phonon.nodes.war.WarTimer.cancel()
+                        Message.broadcast("${ChatColor.DARK_RED}${ChatColor.BOLD}Nodes war enabled")
+                    }
+
                     for (p in Bukkit.getOnlinePlayers()) {
-                        p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.0f)
+                        p.playSound(p.location, Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.0f)
                     }
                 }
 
-                // cannot annex, cannot attack home territory, can only hit borders
                 "skirmish" -> {
-                    Nodes.enableWar(false, true, Config.allowDestructionDuringSkirmish)
-                    Message.broadcast("${ChatColor.DARK_RED}${ChatColor.BOLD}Nodes border skirmishes enabled")
+                    val durationMs = if (args.size >= 3) {
+                        phonon.nodes.mining.MiningBoost.parseDurationMs(args[2])
+                            ?: run {
+                                Message.error(sender, "Invalid duration (e.g. 72h, 2h, 90m)")
+                                return
+                            }
+                    } else {
+                        null
+                    }
 
-                    // play MENACING wither spawn sound
+                    Nodes.enableWar(false, true, Config.allowDestructionDuringSkirmish)
+                    // War KDR only for full war by default — skip startWarSession here
+                    // phonon.nodes.stats.WarStats.startWarSession(fullWar = false)
+
+                    if (durationMs != null) {
+                        phonon.nodes.war.WarTimer.scheduleDisable(durationMs, "Skirmish time expired")
+                        Message.broadcast(
+                            "${ChatColor.DARK_RED}${ChatColor.BOLD}Border skirmishes enabled for ${args[2]}",
+                        )
+                    } else {
+                        phonon.nodes.war.WarTimer.cancel()
+                        Message.broadcast("${ChatColor.DARK_RED}${ChatColor.BOLD}Nodes border skirmishes enabled")
+                    }
+
                     for (p in Bukkit.getOnlinePlayers()) {
-                        p.playSound(p.getLocation(), Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.0f)
+                        p.playSound(p.location, Sound.ENTITY_WITHER_SPAWN, 1.0f, 0.0f)
                     }
                 }
 
                 "disable" -> {
                     if (Nodes.war.enabled == true) {
                         Nodes.disableWar()
+                        phonon.nodes.war.WarTimer.cancel()
+                        phonon.nodes.stats.WarStats.endWarSessionAndSave()
                         Message.broadcast("${ChatColor.BOLD}Nodes war disabled")
                     } else {
                         Message.error(sender, "Nodes war already disabled")
@@ -904,7 +1095,7 @@ public class NodesAdminCommand :
     // route command to further subcommands
     private fun manageResident(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
-            printResidentHelp(sender)
+            printTownHelp(sender)
         } else {
             // route subcommand function
             when (args[1].lowercase()) {
@@ -918,7 +1109,7 @@ public class NodesAdminCommand :
     }
 
     private fun printResidentHelp(sender: CommandSender) {
-        Message.print(sender, "${ChatColor.BOLD}[Nodes] Admin resident management:")
+        Message.print(sender, "${ChatColor.BOLD}[Nodes] Admin town management:")
         Message.print(sender, "/nodesadmin resident towncooldown${ChatColor.WHITE}: Change resident town cooldown")
         Message.print(sender, "Run a command with no args to see usage.")
     }
@@ -1768,7 +1959,7 @@ public class NodesAdminCommand :
      */
     private fun setTownMoveHomeCooldown(sender: CommandSender, args: Array<String>) {
         if (args.size < 4) {
-            Message.error(sender, "Usage: /nodesadmin town sethomecooldown [name] [cooldown]")
+            Message.error(sender, "Usage: /nodesadmin town sethome [name] [id]")
             return
         }
 
@@ -2257,7 +2448,7 @@ public class NodesAdminCommand :
      */
     private fun removeAlly(sender: CommandSender, args: Array<String>) {
         if (args.size < 3) {
-            Message.error(sender, "Usage: /nodesadmin allyremove [name1] [name2]")
+            Message.error(sender, "Usage: /nodesadmin ally [name1] [name2]")
             return
         }
 
@@ -2301,7 +2492,7 @@ public class NodesAdminCommand :
      */
     private fun setTruce(sender: CommandSender, args: Array<String>) {
         if (args.size < 3) {
-            Message.error(sender, "Usage: /nodesadmin truce [name1] [name2]")
+            Message.error(sender, "Usage: /nodesadmin ally [name1] [name2]")
             return
         }
 
@@ -2345,7 +2536,7 @@ public class NodesAdminCommand :
      */
     private fun removeTruce(sender: CommandSender, args: Array<String>) {
         if (args.size < 3) {
-            Message.error(sender, "Usage: /nodesadmin truceremove [name1] [name2]")
+            Message.error(sender, "Usage: /nodesadmin ally [name1] [name2]")
             return
         }
 
@@ -2575,6 +2766,25 @@ public class NodesAdminCommand :
         } catch (e: NoSuchFieldException) {
             Message.error(sender, "No such field: $fieldName")
         }
+    }
+    private fun adminAnnounce(sender: CommandSender, args: Array<String>) {
+        if (args.size < 2) {
+            Message.error(sender, "Usage: /nda announce <message>")
+            return
+        }
+        val msg = args.drop(1).joinToString(" ")
+        val title = org.bukkit.ChatColor.translateAlternateColorCodes('&', msg)
+        for (p in Bukkit.getOnlinePlayers()) {
+            p.sendTitle(
+                "${ChatColor.GOLD}${ChatColor.BOLD}Announcement",
+                title,
+                10, // fade in ticks
+                70, // stay
+                20, // fade out
+            )
+            p.sendMessage("${ChatColor.GOLD}[Announce] ${ChatColor.WHITE}$title")
+        }
+        Message.print(sender, "Announced to ${Bukkit.getOnlinePlayers().size} players")
     }
 
     private fun printDebuggerHelp(sender: CommandSender) {
