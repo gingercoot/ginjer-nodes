@@ -1,9 +1,9 @@
 # Minecraft Nodes
 
-In this fork, I integrated a lot of the modern uses of nodes, such as Mining Towers, Mining boosts, Warzones, Refineries etc..
+** In this fork, I integrated a lot of the modern uses of nodes, such as Mining Towers, Mining boosts, Warzones, Refineries etc..
 
-For any requests to add on to this fork please dm me in discord, I would be happy to consider your features.
-my dc is: mententen
+** For any requests to add on to this fork please dm me in discord, I would be happy to consider your features.
+** my dc is: mententen
 
 ![Nodes map screenshot](docs/nodes_map_example.jpg)
 
@@ -15,7 +15,7 @@ Nodes is a Minecraft plugin that adds a territory-based geopolitics system to yo
 
 ### First Time Installation
 
-1. Download the latest release JAR from the [Releases page](https://github.com/dmccoystephenson/minecraft-nodes/releases).
+1. Download the latest release JAR from the [Releases page](https://github.com/gingercoot/ginjer-nodes/releases).
 2. Place `nodes-VERSION.jar` in the `plugins` folder of your Paper/Spigot server.
 3. Restart your server.
 
@@ -26,7 +26,7 @@ Nodes is a Minecraft plugin that adds a territory-based geopolitics system to yo
 
 ## Usage
 
-### Documentation
+### Documentation (all below are not relevant to my fork currently unless I update them)
 
 - [User Guide](USER_GUIDE.md) – Getting started and common scenarios
 - [Commands Reference](COMMANDS.md) – Complete list of all commands
@@ -35,23 +35,17 @@ Nodes is a Minecraft plugin that adds a territory-based geopolitics system to yo
 
 ### Wiki & Additional Resources
 
-- [Wiki Guide](https://github.com/d-z4/minecraft-nodes/wiki)
+- [Wiki Guide (luna's)](https://github.com/d-z4/minecraft-nodes/wiki)
 - [Dynmap Editor](https://editor.nodes.soy/earth.html)
-
-## Support
-
-You can find the support Discord server [here](https://discord.gg/xXtuAQ2).
 
 ### Experiencing a bug?
 
-Please fill out a bug report [here](https://github.com/dmccoystephenson/minecraft-nodes/issues/new).
-
-- [Known Bugs](https://github.com/dmccoystephenson/minecraft-nodes/issues?q=is%3Aissue+is%3Aopen+label%3Abug)
+Please fill out a bug report [here](https://github.com/gingercoot/ginjer-nodes/issues/new).
 
 ## Contributing
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
-- [Notes for Developers](https://github.com/d-z4/minecraft-nodes/wiki)
+- [Notes for Developers](https://github.com/d-z4/minecraft-nodes/wiki) ((luna's))
 
 ## Testing
 
@@ -107,7 +101,8 @@ See `dynmap/README.md` for full instructions. Requirements: Node.js and Rust.
 | phonon | Original plugin author |
 | Jonathan | Coding + map painting |
 | Doneions | Coding + testing |
-| dmccoystephenson | Maintenance + ongoing development |
+| dmccoystephenson | Maintenance + development |
+| ginjer | development as documented above |
 
 ## License
 
@@ -125,4 +120,4 @@ See the [LICENSE.md](LICENSE.md) file for the full text of the GPL-3.0 license.
 
 This project is in active development.
 
-See [TODO.md](TODO.md) for the current high-level task list.
+I will try to add as many features into this plugin that I can, provided you guys let me know if you want me to add anything, right now I'm pretty much done with the plugin.
