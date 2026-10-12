@@ -1,5 +1,10 @@
 # Minecraft Nodes
 
+In this fork, I integrated a lot of the modern uses of nodes, such as Mining Towers, Mining boosts, Warzones, Refineries etc..
+
+For any requests to add on to this fork please dm me in discord, I would be happy to consider your features.
+my dc is: mententen
+
 ![Nodes map screenshot](docs/nodes_map_example.jpg)
 
 ## Description
