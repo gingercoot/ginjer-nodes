@@ -40,15 +40,9 @@ interface ResourceAttribute {
      */
     public fun apply(resources: TerritoryResources): TerritoryResources
 
-    /**
-     * Return string description of this attribute
-     */
     public fun describe(): String
 }
 
-/**
- * Interface for resource attribute loading system.
- */
 interface ResourceAttributeLoader {
     /**
      * Load resource attribute definitions from a parsed JsonObject.
@@ -77,14 +71,8 @@ data class ResourceNode(
     // client passing a non-sorted attributes list
     val attributesSorted = attributes.sortedBy { it.priority }
 
-    /**
-     * Apply resource node attributes to a TerritoryResources.
-     */
     public fun apply(terr: TerritoryResources): TerritoryResources = this.attributesSorted.fold(terr, { t, attribute -> attribute.apply(t) })
 
-    /**
-     * Print resource node attributes info to sender.
-     */
     public fun printInfo(sender: CommandSender) {
         Message.print(sender, "${ChatColor.BOLD}Resource node \"${this.name}\":")
         for (attribute in this.attributesSorted) {
@@ -116,9 +104,6 @@ public data class ResourceAttributeIncome(
         description = s.toString()
     }
 
-    /**
-     * Add income values from this attribute into territory income.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newIncome = resources.income.clone()
         val newIncomeSpawnEgg = resources.incomeSpawnEgg.clone()
@@ -164,17 +149,12 @@ public data class ResourceAttributeOre(
         description = s.toString()
     }
 
-    /**
-     * Add ore rate probability from this attribute into territory.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
-        // deep clone ores
         val newOres: EnumMap<Material, OreDeposit> = EnumMap<Material, OreDeposit>(Material::class.java)
         for ((mat, ore) in resources.ores) {
             newOres.put(mat, ore.copy())
         }
 
-        // merge ore deposits
         this.ores.forEach { k, v ->
             newOres.get(k)?.let { oreDeposit ->
                 newOres.put(k, oreDeposit.merge(v))
@@ -277,9 +257,6 @@ public data class ResourceAttributeTotalIncomeMultiplier(
     override val priority: Int = 50
     val description: String = "Income Multiplier: ${this.multiplier}"
 
-    /**
-     * Apply multiplier to resource's income.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newIncome = resources.income.clone()
         val newIncomeSpawnEgg = resources.incomeSpawnEgg.clone()
@@ -306,9 +283,6 @@ public data class ResourceAttributeTotalOreMultiplier(
     override val priority: Int = 50
     val description: String = "Ore Multiplier: ${this.multiplier}"
 
-    /**
-     * Apply multiplier to resource's ores.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newOres = resources.ores.clone()
 
@@ -330,9 +304,6 @@ public data class ResourceAttributeTotalCropsMultiplier(
     override val priority: Int = 50
     val description: String = "Crops Multiplier: ${this.multiplier}"
 
-    /**
-     * Apply multiplier to resource's crops.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newCrops = resources.crops.clone()
 
@@ -354,9 +325,6 @@ public data class ResourceAttributeTotalAnimalsMultiplier(
     override val priority: Int = 50
     val description: String = "Animal Breeding Multiplier: ${this.multiplier}"
 
-    /**
-     * Apply multiplier to resource's crops.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newAnimals = resources.animals.clone()
 
@@ -391,9 +359,6 @@ public data class ResourceAttributeIncomeMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Apply multipliers to matching keys in the resource.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newIncome = resources.income.clone()
         val newIncomeSpawnEgg = resources.incomeSpawnEgg.clone()
@@ -434,17 +399,12 @@ public data class ResourceAttributeOreMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Apply multipliers to matching keys in the resource.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
-        // deep clone ores
         val newOres = resources.ores.clone()
         for ((mat, ore) in newOres) {
             newOres.put(mat, ore.copy())
         }
 
-        // merge ore deposits
         this.multiplier.forEach { type, multiplier ->
             if (newOres.containsKey(type)) {
                 val oreDeposit = newOres[type]!!
@@ -475,9 +435,6 @@ public data class ResourceAttributeCropsMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Apply multipliers to matching keys in the resource.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newCrops = resources.crops.clone()
 
@@ -510,9 +467,6 @@ public data class ResourceAttributeAnimalsMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Apply multipliers to matching keys in the resource.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newAnimals = resources.animals.clone()
 
@@ -553,9 +507,6 @@ public data class ResourceAttributeNeighborIncome(
         description = s.toString()
     }
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newIncome = resources.neighborIncome?.clone() ?: EnumMap<Material, Double>(Material::class.java)
         val newIncomeSpawnEgg = resources.neighborIncomeSpawnEgg?.clone() ?: EnumMap<EntityType, Double>(EntityType::class.java)
@@ -601,17 +552,12 @@ public data class ResourceAttributeNeighborOre(
         description = s.toString()
     }
 
-    /**
-     * Add ore rate probability from this attribute into territory.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
-        // deep clone ores
         val newOres = resources.neighborOres?.clone() ?: EnumMap<Material, OreDeposit>(Material::class.java)
         for ((mat, ore) in newOres) {
             newOres.put(mat, ore.copy())
         }
 
-        // merge ore deposits
         this.ores.forEach { k, v ->
             newOres.get(k)?.let { oreDeposit ->
                 newOres.put(k, oreDeposit.merge(v))
@@ -710,9 +656,6 @@ public data class ResourceAttributeNeighborTotalIncomeMultiplier(
     override val priority: Int = 100
     val description: String = "Neighbor Total Income Multiplier: ${this.neighborTotalIncomeMultiplier}"
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val neighborTotalIncomeMultiplier = resources.neighborTotalIncomeMultiplier ?: 0.0
         return resources.copy(
@@ -742,9 +685,6 @@ public data class ResourceAttributeNeighborIncomeMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newNeighborIncomeMultiplier = resources.neighborIncomeMultiplier?.clone() ?: EnumMap<Material, Double>(Material::class.java)
         val newNeighborIncomeSpawnEggMultiplier = resources.neighborIncomeSpawnEggMultiplier?.clone() ?: EnumMap<EntityType, Double>(EntityType::class.java)
@@ -779,9 +719,6 @@ public data class ResourceAttributeNeighborTotalOreMultiplier(
     override val priority: Int = 100
     val description: String = "Neighbor Total Ore Multiplier: ${this.neighborTotalOresMultiplier}"
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val neighborTotalOresMultiplier = resources.neighborTotalOresMultiplier ?: 0.0
         return resources.copy(
@@ -807,9 +744,6 @@ public data class ResourceAttributeNeighborOreMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newNeighborOresMultiplier = resources.neighborOresMultiplier?.clone() ?: EnumMap<Material, Double>(Material::class.java)
 
@@ -835,9 +769,6 @@ public data class ResourceAttributeNeighborTotalCropsMultiplier(
     override val priority: Int = 100
     val description: String = "Neighbor Total Crops Multiplier: ${this.neighborTotalCropsMultiplier}"
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val neighborTotalCropsMultiplier = resources.neighborTotalCropsMultiplier ?: 0.0
         return resources.copy(
@@ -863,9 +794,6 @@ public data class ResourceAttributeNeighborCropsMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newNeighborCropsMultiplier = resources.neighborCropsMultiplier?.clone() ?: EnumMap<Material, Double>(Material::class.java)
 
@@ -891,9 +819,6 @@ public data class ResourceAttributeNeighborTotalAnimalsMultiplier(
     override val priority: Int = 100
     val description: String = "Neighbor Total Animals Multiplier: ${this.neighborTotalAnimalsMultiplier}"
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val neighborTotalAnimalsMultiplier = resources.neighborTotalAnimalsMultiplier ?: 0.0
         return resources.copy(
@@ -919,9 +844,6 @@ public data class ResourceAttributeNeighborAnimalsMultiplier(
         description = s.toString()
     }
 
-    /**
-     * Add together neighbor multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources {
         val newNeighborAnimalsMultiplier = resources.neighborAnimalsMultiplier?.clone() ?: EnumMap<EntityType, Double>(EntityType::class.java)
 
@@ -947,9 +869,6 @@ public data class ResourceAttributeAttackerTimeMultiplier(
     override val priority: Int = 200
     val description: String = "Attacker Time Multiplier: ${this.multiplier}"
 
-    /**
-     * Multiply together multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources = resources.copy(
         attackerTimeMultiplier = resources.attackerTimeMultiplier * multiplier,
     )
@@ -963,9 +882,6 @@ public data class ResourceAttributeDefenderTimeMultiplier(
     override val priority: Int = 201
     val description: String = "Defender Time Multiplier: ${this.multiplier}"
 
-    /**
-     * Multiply together multipliers.
-     */
     override fun apply(resources: TerritoryResources): TerritoryResources = resources.copy(
         defenderTimeMultiplier = resources.defenderTimeMultiplier * multiplier,
     )
@@ -988,7 +904,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
 
                 val attributes: ArrayList<ResourceAttribute> = arrayListOf()
 
-                // icon
                 val icon = node.get("icon")?.let { jsonIcon ->
                     if (jsonIcon.isJsonPrimitive()) {
                         jsonIcon.getAsString()
@@ -997,17 +912,12 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     }
                 }
 
-                // cost
                 val costJson = node.get("cost")?.getAsJsonObject()
                 val costConstant = costJson?.get("constant")?.getAsInt() ?: 0
                 val costScale = costJson?.get("scale")?.getAsDouble() ?: 1.0
 
-                // priority
                 val priority = node.get("priority")?.getAsInt() ?: 0
 
-                // ATTRIBUTES
-
-                // main resource attributes
                 node.get("income")?.getAsJsonObject()?.let { jsonIncome ->
                     if (jsonIncome.size() > 0) {
                         val (income, incomeSpawnEgg) = parseJsonIncome(jsonIncome)
@@ -1033,7 +943,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     }
                 }
 
-                // territory total modifiers
                 node.get("income_total_multiplier")?.getAsDouble()?.let { multiplier ->
                     attributes.add(ResourceAttributeTotalIncomeMultiplier(multiplier))
                 }
@@ -1047,7 +956,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     attributes.add(ResourceAttributeTotalAnimalsMultiplier(multiplier))
                 }
 
-                // territory specific type multipliers
                 node.get("income_multiplier")?.getAsJsonObject()?.let { jsonIncome ->
                     if (jsonIncome.size() > 0) {
                         val (incomeMultiplier, incomeSpawnEggMultiplier) = parseJsonIncome(jsonIncome)
@@ -1073,7 +981,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     }
                 }
 
-                // neighbor direct properties
                 node.get("neighbor_income")?.getAsJsonObject()?.let { jsonIncome ->
                     if (jsonIncome.size() > 0) {
                         val (income, incomeSpawnEgg) = parseJsonIncome(jsonIncome)
@@ -1099,7 +1006,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     }
                 }
 
-                // neighbor modifiers
                 node.get("neighbor_income_total_multiplier")?.getAsDouble()?.let { multiplier ->
                     attributes.add(ResourceAttributeNeighborTotalIncomeMultiplier(multiplier))
                 }
@@ -1113,7 +1019,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     attributes.add(ResourceAttributeNeighborTotalAnimalsMultiplier(multiplier))
                 }
 
-                // neighbor specific multipliers
                 node.get("neighbor_income_multiplier")?.getAsJsonObject()?.let { jsonIncome ->
                     if (jsonIncome.size() > 0) {
                         val (incomeMultiplier, incomeSpawnEggMultiplier) = parseJsonIncome(jsonIncome)
@@ -1139,7 +1044,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
                     }
                 }
 
-                // claim time modifiers
                 node.get("attacker_time_multiplier")?.getAsDouble()?.let { multiplier ->
                     attributes.add(ResourceAttributeAttackerTimeMultiplier(multiplier))
                 }
@@ -1167,8 +1071,6 @@ public object DefaultResourceAttributeLoader : ResourceAttributeLoader {
     }
 }
 
-// helper functions for parsing json resource node format
-
 /**
  * Parse income and spawn egg keys from an income json section.
  * Return tuple of (income, incomeSpawnEgg).
@@ -1180,7 +1082,6 @@ private fun parseJsonIncome(json: JsonObject): Pair<EnumMap<Material, Double>, E
     json.keySet().forEach { type ->
         val itemName = type.uppercase()
 
-        // spawn egg
         if (itemName.startsWith("SPAWN_EGG_")) {
             val entityType = EntityType.valueOf(itemName.replace("SPAWN_EGG_", ""))
             if (entityType !== null) {
@@ -1188,9 +1089,7 @@ private fun parseJsonIncome(json: JsonObject): Pair<EnumMap<Material, Double>, E
             } else {
                 Nodes.logger?.warning("parseJsonIncome(): Failed to parse spawn egg type: $itemName")
             }
-        }
-        // regular material
-        else {
+        } else {
             val material = Material.matchMaterial(type)
             if (material !== null) {
                 income.put(material, json.get(type).getAsDouble())
@@ -1203,9 +1102,6 @@ private fun parseJsonIncome(json: JsonObject): Pair<EnumMap<Material, Double>, E
     return Pair(income, incomeSpawnEgg)
 }
 
-/**
- * Parse json section as map of material name to ore deposit drop.
- */
 private fun parseJsonMapMaterialToOre(json: JsonObject): EnumMap<Material, OreDeposit> {
     val ores = EnumMap<Material, OreDeposit>(Material::class.java)
 
@@ -1248,9 +1144,6 @@ private fun parseJsonMapMaterialToOre(json: JsonObject): EnumMap<Material, OreDe
     return ores
 }
 
-/**
- * Parse json section as a map of a material name to a Double value.
- */
 private fun parseJsonMapMaterialToDouble(json: JsonObject): EnumMap<Material, Double> {
     val map = EnumMap<Material, Double>(Material::class.java)
 
@@ -1266,9 +1159,6 @@ private fun parseJsonMapMaterialToDouble(json: JsonObject): EnumMap<Material, Do
     return map
 }
 
-/**
- * Parse json section as a map of a entity type name to a Double value.
- */
 private fun parseJsonMapEntityTypeToDouble(json: JsonObject): EnumMap<EntityType, Double> {
     val map = EnumMap<EntityType, Double>(EntityType::class.java)
 

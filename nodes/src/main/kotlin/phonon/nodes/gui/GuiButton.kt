@@ -16,7 +16,6 @@ public class GuiButton(
     val callback: (InventoryClickEvent) -> Unit,
 ) : GuiElement {
 
-    // set icon meta
     init {
         if (title != null || tooltip != null) {
             val itemMeta = icon.getItemMeta()

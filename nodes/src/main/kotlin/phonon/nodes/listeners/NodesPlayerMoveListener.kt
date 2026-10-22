@@ -23,7 +23,6 @@ public class NodesPlayerMoveListener : Listener {
 
     @EventHandler
     public fun onPlayerMove(event: PlayerMoveEvent) {
-        // abort if did not change blocks
         val fromX = event.getFrom().getBlockX()
         val fromY = event.getFrom().getBlockY()
         val fromZ = event.getFrom().getBlockZ()
@@ -34,20 +33,17 @@ public class NodesPlayerMoveListener : Listener {
             return
         }
 
-        // handle event effects
         val player = event.player
         val resident = Nodes.getResident(player)
         if (resident == null) {
             return
         }
 
-        // player moved -> cancel any home teleport
         if (resident?.teleportThread != null) {
             resident.teleportThread!!.cancel()
-            resident.teleportThread = null // remove reference
+            resident.teleportThread = null
             Message.error(event.player, "You moved, teleport cancelled")
 
-            // provide cost refund if player teleporting to outpost
             if (resident.isTeleportingToOutpost == true) {
                 Message.error(event.player, "Refunding outpost teleport items")
 
@@ -59,7 +55,6 @@ public class NodesPlayerMoveListener : Listener {
                     val items = ItemStack(material, amount)
                     val leftover = inventory.addItem(items)
 
-                    // drop remaining items at player
                     for (items in leftover.values) {
                         world.dropItem(location, items)
                     }
@@ -68,7 +63,6 @@ public class NodesPlayerMoveListener : Listener {
                 resident.isTeleportingToOutpost = false
             }
 
-            // provide cost refund if player teleporting to a nation town
             if (resident.isTeleportingToNationTown == true) {
                 Message.error(event.player, "Refunding teleport items")
 
@@ -80,7 +74,6 @@ public class NodesPlayerMoveListener : Listener {
                     val items = ItemStack(material, amount)
                     val leftover = inventory.addItem(items)
 
-                    // drop remaining items at player
                     for (items in leftover.values) {
                         world.dropItem(location, items)
                     }
@@ -90,7 +83,6 @@ public class NodesPlayerMoveListener : Listener {
             }
         }
 
-        // check if player chunk changed
         val fromCoord = Coord.fromBlockCoords(fromX, fromZ)
         val toCoord = Coord.fromBlockCoords(toX, toZ)
 
@@ -99,10 +91,8 @@ public class NodesPlayerMoveListener : Listener {
         }
     }
 
-    // handle player teleport (e.g. /t spawn)
     @EventHandler
     public fun onPlayerTeleport(event: PlayerTeleportEvent) {
-        // abort if did not change blocks
         val fromX = event.getFrom().getBlockX()
         val fromY = event.getFrom().getBlockY()
         val fromZ = event.getFrom().getBlockZ()
@@ -113,14 +103,11 @@ public class NodesPlayerMoveListener : Listener {
             return
         }
 
-        // handle event effects
-
         val resident = Nodes.getResident(event.player)
         if (resident == null) {
             return
         }
 
-        // check if player chunk changed
         val fromCoord = Coord.fromBlockCoords(fromX, fromZ)
         val toCoord = Coord.fromBlockCoords(toX, toZ)
 
@@ -129,7 +116,6 @@ public class NodesPlayerMoveListener : Listener {
         }
     }
 
-    // handle player changing to new chunk
     public fun onPlayerMoveChunk(player: Player, resident: Resident, fromCoord: Coord, toCoord: Coord) {
         val fromTerritory = Nodes.getTerritoryFromCoord(fromCoord)
         val toTerritory = Nodes.getTerritoryFromCoord(toCoord)
@@ -158,44 +144,31 @@ public class NodesPlayerMoveListener : Listener {
             }
         }
 
-        // update minimap
         resident.updateMinimap(toCoord)
 
-        // check if flight needs to be disabled (e.g. player moved to different town or wilderness)
-        // ignore admins in creative and spectator
         if (player.gameMode in listOf(GameMode.CREATIVE, GameMode.SPECTATOR)) return
 
         val playerTown = getTownFromPlayer(player)
 
-        // if player leaves their own town while flying, disable flight
         if (player.allowFlight && toTerritory?.town != playerTown) {
             player.allowFlight = false
-            // give player slow falling to avoid fall damage
+            // Slow falling so they don't take fall damage
             player.addPotionEffect(PotionEffect(PotionEffectType.SLOW_FALLING, 100, 0, false, false, false))
             Message.print(player, "You are no longer in your town, disabling flight")
         }
     }
 }
 
-/**
- * Inputs:
- * player: player who will see message
- * resident: resident from player
- * toTown: territory town the player has entered
- * toTerritory: terretiroy player has entered
- */
 private fun printTownMessage(player: Player, resident: Resident, toTown: Town, toTerritory: Territory) {
     val residentTown = resident.town
     val territoryOccupier = toTerritory.occupier
 
-    // territory name token
     val territoryName = if (toTerritory.name != "") {
         "${toTerritory.name} (${toTown.name})"
     } else {
         "${toTown.name}"
     }
 
-    // territory name color and territory occupation/captured modifier
     var territoryNameColor = ""
     var ownerStatus = ""
 
@@ -208,7 +181,6 @@ private fun printTownMessage(player: Player, resident: Resident, toTown: Town, t
             territoryNameColor = "${ChatColor.DARK_AQUA}"
         }
 
-        // set occupation status
         if (territoryOccupier !== null) {
             if (territoryOccupier === residentTown) {
                 ownerStatus = " ${ChatColor.DARK_GREEN}(Captured)"

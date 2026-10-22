@@ -21,18 +21,12 @@ import phonon.nodes.objects.TownPair
 import phonon.nodes.utils.saveStringToFile
 import java.nio.file.Path
 
-/**
- * Simplified truce state for serialization.
- */
 public data class TruceSaveState(
     val town1: String,
     val town2: String,
     val time: Long,
 )
 
-/**
- * Serialize truces state to json string.
- */
 public fun trucesToJsonStr(truces: List<TruceSaveState>): String {
     val size = truces.size
     var i = 0
@@ -42,7 +36,6 @@ public fun trucesToJsonStr(truces: List<TruceSaveState>): String {
     for (truce in truces) {
         s.append("[\"${truce.town1}\", \"${truce.town2}\", ${truce.time}]")
 
-        // add comma
         if (i < size - 1) {
             s.append(",")
             i += 1
@@ -53,15 +46,11 @@ public fun trucesToJsonStr(truces: List<TruceSaveState>): String {
     return s.toString()
 }
 
-/**
- * Runnable task to serialize truce save states into json file.
- */
 public class TaskSaveTruce(
     val truces: List<TruceSaveState>,
     val pathTruce: Path,
 ) : Runnable {
     override fun run() {
-        // serialize world state
         val jsonStr = trucesToJsonStr(truces)
         saveStringToFile(jsonStr, pathTruce)
     }
@@ -71,18 +60,14 @@ public object Truce {
     // truce map of (town1, town2) -> time ticked in current truce
     public val truces: HashMap<TownPair, Long> = hashMapOf()
 
-    // all truces for a given town, map Town -> TownPair that contains it
     public val trucesByTown: HashMap<Town, HashSet<TownPair>> = hashMapOf()
 
-    // indicator that truces changed and requires save
     public var needsUpdate: Boolean = false
 
-    // creates new truce between two towns
     public fun create(town1: Town, town2: Town, startTime: Long) {
         val towns = TownPair(town1, town2)
         Truce.truces.put(towns, startTime)
 
-        // put references from each town -> TownPair
         val town1Truces = Truce.trucesByTown.get(town1)
         if (town1Truces !== null) {
             town1Truces.add(towns)
@@ -97,16 +82,13 @@ public object Truce {
             Truce.trucesByTown.put(town2, hashSetOf(towns))
         }
 
-        // mark save update needed
         Truce.needsUpdate = true
     }
 
-    // removes truce between two towns
     public fun remove(town1: Town, town2: Town) {
         val towns = TownPair(town1, town2)
         Truce.truces.remove(towns)
 
-        // remove references from each town -> TownPair
         val town1Truces = Truce.trucesByTown.get(town1)
         if (town1Truces !== null) {
             town1Truces.remove(towns)
@@ -117,14 +99,11 @@ public object Truce {
             town2Truces.remove(towns)
         }
 
-        // mark save update needed
         Truce.needsUpdate = true
     }
 
-    // returns true if truce exists between (town1, town2)
     public fun contains(town1: Town, town2: Town): Boolean = Truce.truces.contains(TownPair(town1, town2))
 
-    // get list of truces involving input town
     public fun get(town: Town): List<TownPair> {
         val townTruces = Truce.trucesByTown.get(town)
         if (townTruces !== null) {
@@ -134,15 +113,12 @@ public object Truce {
         return listOf()
     }
 
-    // return snapshot of truce state for saving
     public fun saveTask(): TaskSaveTruce {
         val truceSnapshot = Truce.truces.map { (towns, time) -> TruceSaveState(towns.town1.name, towns.town2.name, time) }
         return TaskSaveTruce(truceSnapshot, Config.pathTruce)
     }
 
-    // parse truces from Json string
     public fun fromJsonString(jsonString: String) {
-        // clear current data
         Truce.truces.clear()
         Truce.trucesByTown.clear()
 
@@ -156,7 +132,6 @@ public object Truce {
                 val town2Name: String = truce[1].getAsString()
                 val startTime: Long = truce[2].getAsLong()
 
-                // get towns
                 val town1 = Nodes.getTownFromName(town1Name)
                 if (town1 === null) {
                     continue
@@ -167,7 +142,6 @@ public object Truce {
                     continue
                 }
 
-                // set truce
                 Truce.create(town1, town2, startTime)
             }
         }

@@ -52,10 +52,13 @@ import phonon.nodes.constants.ErrorTownNotWhitelisted
 import phonon.nodes.event.WarAttackCancelEvent
 import phonon.nodes.event.WarAttackFinishEvent
 import phonon.nodes.event.WarAttackStartEvent
+import phonon.nodes.fortify.Fortifications
 import phonon.nodes.objects.Coord
 import phonon.nodes.objects.Territory
 import phonon.nodes.objects.TerritoryChunk
 import phonon.nodes.objects.Town
+import phonon.nodes.supply.SupplyLines
+import phonon.nodes.war.Raid
 import java.nio.file.Files
 import java.util.EnumSet
 import java.util.UUID
@@ -302,9 +305,6 @@ public object FlagWar {
         WarSerializer.save(true)
     }
 
-    /**
-     * Shared placement + limit checks used by owned and unowned paths.
-     */
     private fun checkFlagPlacementAndLimits(
         attacker: UUID,
         attackingTown: Town,
@@ -314,11 +314,12 @@ public object FlagWar {
         flagBaseX: Int,
         flagBaseY: Int,
         flagBaseZ: Int,
+        skipEdgeCheck: Boolean = false,
     ): Result<Unit> {
         if (chunk.attacker !== null) {
             return Result.failure(ErrorAlreadyUnderAttack)
         }
-        if (FlagWar.chunkIsAtEdge(chunk, attackingTown) == false) {
+        if (!skipEdgeCheck && FlagWar.chunkIsAtEdge(chunk, attackingTown) == false) {
             return Result.failure(ErrorChunkNotEdge)
         }
         if (flagBaseY >= 253) {
@@ -361,7 +362,6 @@ public object FlagWar {
         val territory = chunk.territory
         val territoryTown = territory.town
 
-        // ---------- unowned territory ----------
         if (territoryTown === null) {
             if (!Config.allowUnownedAttack) {
                 return Result.failure(ErrorNotEnemy)
@@ -389,7 +389,6 @@ public object FlagWar {
             return Result.success(attack)
         }
 
-        // ---------- owned territory (town is non-null) ----------
         val town: Town = territoryTown
 
         if (Config.warUseBlacklist && Config.warBlacklist.contains(town.uuid)) {
@@ -409,18 +408,32 @@ public object FlagWar {
         }
 
         val isWarzoneTarget = Warzone.isAttackableWarzoneTerritory(town)
-        if (isWarzoneTarget) {
-            if (!Warzone.canAttackWarzone(attackingTown, town)) {
+        val liveRaid = Raid.getLive(territory)
+
+        var raidRetake = false
+        if (liveRaid != null) {
+            if (!Raid.canRaidAttack(attackingTown, territory)) {
+                if (!Raid.canRaidRetake(attackingTown, chunk)) {
+                    return Result.failure(ErrorNotEnemy)
+                }
+                raidRetake = true
+            }
+        } else {
+            if (isWarzoneTarget) {
+                if (!Warzone.canAttackWarzone(attackingTown, town)) {
+                    return Result.failure(ErrorNotEnemy)
+                }
+            }
+            val enemyOk = isWarzoneTarget || chunkIsEnemy(chunk, territory, attackingTown)
+            if (!enemyOk) {
                 return Result.failure(ErrorNotEnemy)
             }
         }
 
-        val enemyOk = isWarzoneTarget || chunkIsEnemy(chunk, territory, attackingTown)
-        if (!enemyOk) {
-            return Result.failure(ErrorNotEnemy)
-        }
-
-        if (FlagWar.canOnlyAttackBorders && !FlagWar.isBorderTerritory(territory)) {
+        if (liveRaid == null &&
+            FlagWar.canOnlyAttackBorders &&
+            !FlagWar.isBorderTerritory(territory)
+        ) {
             return Result.failure(ErrorNotBorderTerritory)
         }
 
@@ -433,6 +446,7 @@ public object FlagWar {
             flagBaseX,
             flagBaseY,
             flagBaseZ,
+            skipEdgeCheck = raidRetake,
         )
         if (place.isFailure) {
             return Result.failure(place.exceptionOrNull()!!)
@@ -480,10 +494,15 @@ public object FlagWar {
                 attackTime *= territory.defenderTimeMultiplier
             } else {
                 attackTime *= territory.attackerTimeMultiplier
+                if (!SupplyLines.isFriendly(terrTown, attackingTown)) {
+                    if (SupplyLines.isCutOff(terrTown, territory.id)) {
+                        attackTime *= SupplyLines.captureTimeMultiplier()
+                    }
+                    attackTime *= Fortifications.captureMultiplier(territory)
+                }
             }
         }
 
-        // More players in chunk → faster cap (only if enabled)
         if (Config.playersInChunkMultiplier) {
             val bukkitChunk = flagBase.chunk
             var playersInChunk = 0
@@ -575,11 +594,9 @@ public object FlagWar {
         }
         currentAttacks.add(attack)
 
-        // REQUIRED — was dead code after early return before
         FlagWar.chunkToAttacker[chunk.coord] = attack
         FlagWar.blockToAttacker[flagBlock] = attack
 
-        // Hotbar alert to defending town members
         val defenderTown = territory.town
         if (defenderTown != null) {
             val attackerName = Bukkit.getOfflinePlayer(attacker).name ?: "Someone"
@@ -587,7 +604,6 @@ public object FlagWar {
                 "${ChatColor.DARK_RED}${ChatColor.BOLD}$attackerName${ChatColor.RED} is attacking your land in ${ChatColor.YELLOW}${territory.id}${ChatColor.RED} at ${ChatColor.WHITE}($flagBaseX, $flagBaseY, $flagBaseZ)"
 
             val plugin = Nodes.plugin!!
-            // show ~8 seconds (8 times, once per second)
             var ticksLeft = 12
             Bukkit.getScheduler().runTaskTimer(
                 plugin,
@@ -613,9 +629,8 @@ public object FlagWar {
                     }
                 },
                 0L,
-                20L, // every 1s
+                20L,
             ).also { task ->
-                // cancel after 8s so it doesn't run forever
                 Bukkit.getScheduler().runTaskLater(plugin, Runnable { task.cancel() }, 20L * 8)
             }
         }
@@ -715,12 +730,11 @@ public object FlagWar {
         if (neighborChunk === null) {
             return true
         }
-        // empty territory (no town)
         if (neighborChunk.territory.town === null) {
             if (FlagWar.canOnlyAttackBorders && Config.allowBorderSkirmishFromWilderness) {
                 return true
             }
-            return true // or keep your old empty rules
+            return true
         }
 
         val attackerNation = attacker.nation
@@ -730,7 +744,6 @@ public object FlagWar {
         val neighborChunkOccupier = neighborChunk.occupier
 
         if (neighborTown === null) {
-            // empty territory node
             if (FlagWar.canOnlyAttackBorders && !Config.allowBorderSkirmishFromWilderness) {
                 return false
             }
@@ -940,22 +953,41 @@ public object FlagWar {
                 }
             }
 
-            if (territoryTown === attackerTown ||
+            // Raid: attacker wins the raid, defender keeps the node
+            val liveRaid = Raid.getLive(territory)
+            if (liveRaid != null && attackerTown === liveRaid.attacker) {
+                if (territory.occupier != null) {
+                    Nodes.releaseTerritory(territory)
+                }
+                Message.broadcast(
+                    "${ChatColor.DARK_RED}[Raid] ${attackerTown.name} captured the raid node " +
+                        "(id=${territory.id}) — territory remains ${liveRaid.defender.name}'s!",
+                )
+                Raid.onCoreCaptured(attackerTown, territory)
+                Nodes.renderMinimaps()
+                FlagWar.needsSave = true
+            } else if (territoryTown === attackerTown ||
                 (attackerNation !== null && attackerNation === territoryTown?.nation) ||
                 attackerTown.allies.contains(territoryTown)
             ) {
                 val occupier = territory.occupier
                 Nodes.releaseTerritory(territory)
-                Message.broadcast("${ChatColor.DARK_RED}[War] ${attacker?.name} liberated territory (id=${territory.id}) from ${occupier?.name}!")
+                Message.broadcast(
+                    "${ChatColor.DARK_RED}[War] ${attacker?.name} liberated territory (id=${territory.id}) from ${occupier?.name}!",
+                )
                 phonon.nodes.util.DiscordRelay.flagWar(
                     "**[Flag]** ${attacker?.name ?: "Someone"} liberated territory `${territory.id}`",
                 )
+                Nodes.renderMinimaps()
+                FlagWar.needsSave = true
             } else {
                 val defenderTown = territoryTown
                 val wasHome = defenderTown != null && territory.id == defenderTown.home
 
                 Nodes.captureTerritory(attackerTown, territory)
-                Message.broadcast("${ChatColor.DARK_RED}[War] ${attacker?.name} captured territory (id=${territory.id}) from ${defenderTown?.name}!")
+                Message.broadcast(
+                    "${ChatColor.DARK_RED}[War] ${attacker?.name} captured territory (id=${territory.id}) from ${defenderTown?.name}!",
+                )
                 phonon.nodes.util.DiscordRelay.flagWar(
                     "**[Flag]** ${attacker?.name} captured territory `${territory.id}` from ${defenderTown?.name}",
                 )
@@ -965,21 +997,34 @@ public object FlagWar {
                     FlagWar.canAnnexTerritories &&
                     !Config.annexDisabled
                 ) {
-                    val annexed = Nodes.annexTerritory(attackerTown, territory)
-                    if (annexed) {
-                        Message.broadcast(
-                            "${ChatColor.DARK_RED}${ChatColor.BOLD}[War] ${attackerTown.name} fully annexed ${defenderTown.name} by capturing its home!",
-                        )
-                    }
+                    Nodes.annexTerritory(attackerTown, territory)
                 }
+                Nodes.renderMinimaps()
+                FlagWar.needsSave = true
             }
-            Nodes.renderMinimaps()
         } else {
             val town = chunk.territory.town
             val occupier = chunk.territory.occupier
             val attacker = Nodes.getResidentFromUUID(attack.attacker)
 
             chunk.attacker = null
+
+            val liveRaid = Raid.getLive(chunk.territory)
+            if (liveRaid != null &&
+                Raid.isDefenderSide(attack.town, liveRaid) &&
+                chunk.occupier === liveRaid.attacker
+            ) {
+                chunk.occupier = null
+                FlagWar.occupiedChunks.remove(chunk.coord)
+                FlagWar.needsSave = true
+                Message.broadcast("${ChatColor.DARK_RED}[War] ${attacker?.name} defended chunk (${chunk.coord.x}, ${chunk.coord.z}) against ${liveRaid.attacker.name}!")
+                Nodes.renderMinimaps()
+                if (FlagWar.chunkToAttacker.isEmpty()) {
+                    FlagWar.attackTickTask?.cancel()
+                    FlagWar.attackTickTask = null
+                }
+                return
+            }
 
             if (town === attack.town) {
                 if (occupier !== null) {

@@ -52,6 +52,7 @@ import phonon.nodes.event.AllianceCreatedEvent
 import phonon.nodes.event.NodesTerritoriesLoadedEvent
 import phonon.nodes.event.NodesWorldLoadedEvent
 import phonon.nodes.event.TruceExpiredEvent
+import phonon.nodes.fortify.Fortifications
 import phonon.nodes.objects.Coord
 import phonon.nodes.objects.DefaultResourceAttributeLoader
 import phonon.nodes.objects.Nametag
@@ -72,6 +73,7 @@ import phonon.nodes.objects.Town
 import phonon.nodes.objects.TownOutpost
 import phonon.nodes.objects.TownPair
 import phonon.nodes.serdes.Deserializer
+import phonon.nodes.supply.SupplyLines
 import phonon.nodes.tasks.OverMaxClaimsReminder
 import phonon.nodes.tasks.SaveManager
 import phonon.nodes.tasks.TaskCopyToDynmap
@@ -82,6 +84,7 @@ import phonon.nodes.tasks.TaskSaveWorld
 import phonon.nodes.utils.Color
 import phonon.nodes.utils.sanitizeString
 import phonon.nodes.utils.saveStringToFile
+import phonon.nodes.vassal.Vassals
 import phonon.nodes.war.FlagWar
 import phonon.nodes.war.Truce
 import java.io.File
@@ -97,85 +100,61 @@ import java.util.concurrent.ThreadLocalRandom
 import java.util.logging.Logger
 import kotlin.system.measureNanoTime
 
-/**
- * Nodes container
- */
 public object Nodes {
 
-    // version string
     internal val version: String = "v0.0.14"
 
-    // library of resource node definitions
     internal val resourceNodes: HashMap<String, ResourceNode> = hashMapOf()
 
-    // world grid that maps coord -> territory chunk wrapper
     internal val territoryChunks: HashMap<Coord, TerritoryChunk> = hashMapOf()
 
-    // map territory id -> Territory
     internal val territories: HashMap<TerritoryId, Territory> = hashMapOf()
 
-    // list of all towns
     internal val towns: LinkedHashMap<String, Town> = LinkedHashMap()
 
-    // list of all nations
     internal val nations: LinkedHashMap<String, Nation> = LinkedHashMap()
 
-    // map player UUID -> Resident player wrapper
     internal val residents: LinkedHashMap<UUID, Resident> = LinkedHashMap()
 
-    // ports system
     internal val ports: LinkedHashMap<String, Port> = LinkedHashMap()
     internal val portGroups: LinkedHashMap<String, PortGroup> = LinkedHashMap()
 
-    // map of player -> task for warping
     public var playerWarpTasks: HashMap<UUID, BukkitTask> = hashMapOf()
 
-    // map chunk coords -> port, assumes one chunk only has 1 port
+    // chunk coords -> port (one port per chunk)
     public var chunkToPort: HashMap<List<Int>, Port> = hashMapOf()
 
-    // last time backup occurred: NOTE this is accessed async
-    internal var lastBackupTime: Long = 0 // milliseconds
+    // Accessed async
+    internal var lastBackupTime: Long = 0
 
-    // last time income occurred: NOTE this is accessed async
-    internal var lastIncomeTime: Long = 0 // milliseconds
+    // Accessed async
+    internal var lastIncomeTime: Long = 0
 
-    // war manager
     public val war = FlagWar
 
-    // flag that world was updated and needs save
     internal var needsSave: Boolean = false
 
-    // set of invalid block locations for hidden ore drops
     internal val hiddenOreInvalidBlocks: OreBlockCache = OreBlockCache(2000)
 
-    // hooks to other plugins
-    internal var dynmap: Boolean = false // simple flag
+    internal var dynmap: Boolean = false
     internal val DYNMAP_DIR: Path = Paths.get("plugins/dynmap/web/nodes")
     internal val DYNMAP_PATH_NODES_CONFIG: Path = Paths.get("plugins/dynmap/web/nodes/config.json")
     internal val DYNMAP_PATH_WORLD: Path = Paths.get("plugins/dynmap/web/nodes/world.json")
     internal val DYNMAP_PATH_TOWNS: Path = Paths.get("plugins/dynmap/web/nodes/towns.json")
     internal val DYNMAP_PATH_PORTS: Path = Paths.get("plugins/dynmap/web/nodes/ports.json")
 
-    // minecraft plugin variable
     internal var plugin: Plugin? = null
     internal var logger: Logger? = null
 
-    // flag that plugin successfully initialized
     internal var initialized: Boolean = false
 
-    // flag that plugin is running
     internal var enabled: Boolean = false
 
-    // initialization:
-    // - set links to plugin variables
     internal fun initialize(plugin: Plugin) {
         Nodes.plugin = plugin
         Nodes.logger = plugin.getLogger()
     }
 
-    /**
-     * reload config file
-     */
     internal fun reloadConfig() {
         val plugin = Nodes.plugin
         if (plugin === null) {
@@ -184,7 +163,6 @@ public object Nodes {
 
         val logger = plugin.getLogger()
 
-        // get config file
         val configFile = File(plugin.getDataFolder().getPath(), "config.yml")
         if (!configFile.exists()) {
             logger.info("No config found: generating default config.yml")
@@ -197,9 +175,6 @@ public object Nodes {
         }
     }
 
-    /**
-     * Reload background managers/tasks
-     */
     internal fun reloadManagers() {
         SaveManager.stop()
         PeriodicTickManager.stop()
@@ -217,53 +192,40 @@ public object Nodes {
         Nametag.start(plugin, Config.nametagUpdatePeriod)
     }
 
-    // mark all current players in game as online
-    // needed to correctly mark online players after reloading plugin
+    // Needed to mark online players correctly after a plugin reload
     internal fun initializeOnlinePlayers() {
         for (player in Bukkit.getOnlinePlayers()) {
-            // create resident for player if it does not exist
             Nodes.createResident(player)
 
-            // mark player online
             val resident = Nodes.getResident(player)!!
             Nodes.setResidentOnline(resident, player)
 
-            // create nametag (only when town exists)
             if (resident.town !== null && Config.useNametags) {
                 Nametag.create(player)
             }
         }
     }
 
-    // clean up any world details
-    // run when plugin disabled
     internal fun cleanup() {
-        // cleanup residents
         for (r in Nodes.residents.values) {
-            // remove minimaps
             r.destroyMinimap()
         }
 
-        // force push all town income items from inventory gui
-        // back to storage data structure
         for (town in Nodes.towns.values) {
             val result = town.income.pushToStorage(true)
-            if (result == true) { // has moved items
+            if (result == true) {
                 town.needsUpdate()
             }
         }
 
-        // cleanup war if its enabled
         if (Nodes.war.enabled) {
             Nodes.war.cleanup()
         }
 
-        // cleanup nametags
         if (Config.useNametags) {
             Nametag.clear()
         }
 
-        // save backup, income current time
         val currTimeString = System.currentTimeMillis().toString()
         saveStringToFile(currTimeString, Config.pathLastBackupTime)
         saveStringToFile(currTimeString, Config.pathLastIncomeTime)
@@ -297,18 +259,16 @@ public object Nodes {
         // must pre-emptively load neighbor's neighbors resources.
         val terrResourceGraph: HashMap<TerritoryId, TerritoryResources> = HashMap(0)
 
-        if (ids != null) { // add neighbor territories to terrResourceGraph
+        if (ids != null) {
             val neighborResourcesToLoad = HashSet<TerritoryId>()
 
             for (id in ids) {
                 val currTerr = Nodes.territories[id]
                 if (currTerr != null) {
-                    // add neighbor territory resources into territory resource graph
                     for (neighborId in currTerr.neighbors) {
                         val neighborTerr = Nodes.territories[neighborId]
                         if (neighborTerr != null) {
                             neighborResourcesToLoad.add(neighborId)
-                            // also add neighbor's neighbor ids
                             for (nnId in neighborTerr.neighbors) {
                                 neighborResourcesToLoad.add(nnId)
                             }
@@ -335,7 +295,6 @@ public object Nodes {
             }
         }
 
-        // adds territories to be loaded to terrResourceGraph
         for (terr in territoryPreprocessing) {
             val resources = terr.resourceNodes
                 .map { name -> Nodes.resourceNodes[name] ?: throw Exception("Resource node '$name' does not exist (for territory id=${terr.id})") }
@@ -372,11 +331,10 @@ public object Nodes {
             territoryPreprocessing + terrNeighborsToRebuild
         }
 
-        // Apply neighboring territory modifier properties to territories to be built
         for (terr in territoriesToBuild) {
             val terrResources = terrResourceGraph[terr.id]
             if (terrResources != null) {
-                var terrAfterNeighborModifiers: TerritoryResources = terrResources // required assignment to ensure terrAfterNeighborModifiers is not null
+                var terrAfterNeighborModifiers: TerritoryResources = terrResources
                 for (neighborId in terr.neighbors) {
                     terrResourceGraph[neighborId]?.let { neighborResources ->
                         if (neighborResources.hasNeighborModifier) {
@@ -390,28 +348,20 @@ public object Nodes {
             }
         }
 
-        // merge territory structural properties and resources
-        // to create final territory
         for (t in territoriesToBuild) {
-            // ensure coreChunk inside chunks
             if (!t.chunks.contains(t.core)) {
                 Nodes.logger?.warning("[Nodes] Territory ${t.id} chunk does not contain core")
                 return
             }
 
-            // get resources and apply all accumulated neighbor modifiers
             val resources = terrResourceGraph[t.id]!!.applyNeighborModifiers()
 
-            // sorted resource names
             val resourceNamesSorted = t.resourceNodes.sortedBy { name -> Nodes.resourceNodes[name]!!.priority }
 
-            // create OreSampler from ores map
             val ores = OreSampler(ArrayList(resources.ores.values))
 
-            // calculate territory cost
             val cost = Nodes.calculateTerritoryCost(t.chunks.size, resourceNamesSorted)
 
-            // create territory
             val territory = Territory(
                 id = t.id,
                 name = t.name,
@@ -432,19 +382,15 @@ public object Nodes {
                 defenderTimeMultiplier = resources.defenderTimeMultiplier,
             )
 
-            // if previous territory existed, first do cleanup and copy mutable ingame properties
+            // Carry over in-game state from the old territory
             Nodes.territories[t.id]?.let { oldTerritory ->
-                // remove old territory chunks
                 oldTerritory.chunks.forEach { c -> Nodes.territoryChunks.remove(c) }
-                // copy town and occupier
                 territory.town = oldTerritory.town
                 territory.occupier = oldTerritory.occupier
             }
 
-            // set territory
             Nodes.territories.put(t.id, territory)
 
-            // create territory chunks in world grid and map to territory
             t.chunks.forEach { c ->
                 Nodes.territoryChunks.put(c, TerritoryChunk(c, territory))
             }
@@ -469,13 +415,10 @@ public object Nodes {
             if (reloadResources && jsonResources != null) {
                 Nodes.loadResources(jsonResources)
                 if (jsonTerritories != null) Nodes.loadTerritories(jsonTerritories)
-            }
-            // just reload territories specified
-            else if (reloadTerritories && jsonTerritories != null) {
+            } else if (reloadTerritories && jsonTerritories != null) {
                 Nodes.loadTerritories(jsonTerritories, territoryIds)
             }
 
-            // no errors happened: copy world.json to dynmap folder
             if (Nodes.dynmap == true || Config.dynmapCopyTowns) {
                 TaskCopyToDynmap(Config.pathWorld, DYNMAP_DIR, DYNMAP_PATH_WORLD).run()
             }
@@ -486,12 +429,7 @@ public object Nodes {
         return false
     }
 
-    // load world from path
-    // returns status of world load:
-    // true - successful load
-    // false - failed
     internal fun loadWorld(): Boolean {
-        // clear storage
         Nodes.resourceNodes.clear()
         Nodes.territoryChunks.clear()
         Nodes.territories.clear()
@@ -500,23 +438,19 @@ public object Nodes {
         Nodes.residents.clear()
         Nodes.ports.clear()
 
-        // load world from JSON storage
         if (Files.exists(Config.pathWorld)) {
             val (jsonResources, jsonTerritories) = Deserializer.worldFromJson(Config.pathWorld)
             if (jsonResources != null) Nodes.loadResources(jsonResources)
             if (jsonTerritories != null) Nodes.loadTerritories(jsonTerritories)
 
-            // load world.json to dynmap folder
             if (Nodes.dynmap == true || Config.dynmapCopyTowns) {
                 TaskCopyToDynmap(Config.pathWorld, Nodes.DYNMAP_DIR, Nodes.DYNMAP_PATH_WORLD).run()
             }
 
-            // load towns from json after main world load finishes
             if (Files.exists(Config.pathTowns)) {
                 Deserializer.townsFromJson(Config.pathTowns)
 
-                // pre-generate initial json strings for all world objects
-                // (speeds up first save)
+                // Pre-generate json strings to speed up the first save
                 for (resident in Nodes.residents.values) {
                     resident.getSaveState()
                 }
@@ -527,24 +461,20 @@ public object Nodes {
                     nation.getSaveState()
                 }
 
-                // load towns.json to dynmap folder
                 if (Nodes.dynmap) {
                     Files.copy(Config.pathTowns, Nodes.DYNMAP_PATH_TOWNS, StandardCopyOption.REPLACE_EXISTING)
                 }
 
-                // load war state
                 Nodes.war.load()
             } else {
                 System.err.println("No towns found: ${Config.pathTowns}")
                 return true
             }
 
-            // load ports from json
             if (Files.exists(Config.pathPorts)) {
                 Deserializer.portsFromJson(Config.pathPorts)
 
-                // pre-generate initial json strings for all port objects
-                // (speeds up first save)
+                // Pre-generate json strings to speed up the first save
                 for (port in Nodes.ports.values) {
                     port.getSaveState()
                 }
@@ -552,7 +482,6 @@ public object Nodes {
                     portGroup.getSaveState()
                 }
 
-                // load ports.json to dynmap folder
                 if (Nodes.dynmap) {
                     Files.copy(Config.pathPorts, Nodes.DYNMAP_PATH_PORTS, StandardCopyOption.REPLACE_EXISTING)
                 }
@@ -570,9 +499,6 @@ public object Nodes {
         return true
     }
 
-    /**
-     * Save world to JSON storage.
-     */
     internal fun saveWorld(
         checkIfNeedsSave: Boolean = true, // set to false to force save
         async: Boolean = false, // run serialization and file write asynchronously
@@ -590,7 +516,6 @@ public object Nodes {
         }
 
         if (Nodes.needsSave == true || checkIfNeedsSave == false) {
-            // world pre-processing
             Nodes.saveWorldPreprocess()
 
             val timeUpdate = measureNanoTime {
@@ -600,7 +525,6 @@ public object Nodes {
                 val townsSnapshot = Nodes.towns.values.map { it.getSaveState() }
                 val nationsSnapshot = Nodes.nations.values.map { it.getSaveState() }
 
-                // whether should copy towns.json to dynmap folder
                 val copyToDynmap = Config.dynmapCopyTowns
 
                 // save task manages:
@@ -632,12 +556,9 @@ public object Nodes {
 
             Nodes.logger?.info("[Nodes] Saving world: ${timeUpdate}ns")
 
-            // save ports
-            // create a snapshot of port objects state
             val portGroupsSnapshot = Nodes.portGroups.values.map { it.getSaveState() }
             val portsSnapshot = Nodes.ports.values.map { it.getSaveState() }
 
-            // whether should copy ports.json to dynmap folder
             val copyToDynmap = Nodes.dynmap || Config.dynmapCopyTowns
 
             val taskSavePorts = TaskSavePorts(
@@ -672,11 +593,9 @@ public object Nodes {
      * saving to json.
      */
     internal fun saveWorldPreprocess() {
-        // move all town income items from inventory gui
-        // back to storage data structure
         for (town in Nodes.towns.values) {
             val result = town.income.pushToStorage(false)
-            if (result == true) { // has moved items
+            if (result == true) {
                 town.needsUpdate()
             }
         }
@@ -704,7 +623,7 @@ public object Nodes {
         val taskSavePorts = TaskCopyToDynmap(
             Config.pathPorts,
             Nodes.DYNMAP_DIR,
-            Nodes.DYNMAP_PATH_PORTS, // FIXED — was DYNMAP_PATH_TOWNS
+            Nodes.DYNMAP_PATH_PORTS,
         )
 
         if (async) {
@@ -751,12 +670,9 @@ public object Nodes {
                 if (other !== null) {
                     val otherNation = other.nation
 
-                    // only add individual town pair if either does not have a nation
                     if (townNation === null || otherNation === null) {
                         townAlliancePairs.add(TownPair(town, other))
-                    }
-                    // add nation pairs
-                    else if (town === townNation.capital && other === otherNation.capital) {
+                    } else if (town === townNation.capital && other === otherNation.capital) {
                         nationAlliancePairs.add(NationPair(townNation, otherNation))
                     }
                 }
@@ -767,19 +683,15 @@ public object Nodes {
                 if (other !== null) {
                     val otherNation = other.nation
 
-                    // only add individual town pair if either does not have a nation
                     if (townNation === null || otherNation === null) {
                         townEnemyPairs.add(TownPair(town, other))
-                    }
-                    // add nation pairs
-                    else if (town === townNation.capital && other === otherNation.capital) {
+                    } else if (town === townNation.capital && other === otherNation.capital) {
                         nationEnemyPairs.add(NationPair(townNation, otherNation))
                     }
                 }
             }
         }
 
-        // apply ally pairs
         for (townPair in townAlliancePairs) {
             val town1 = townPair.town1
             val town2 = townPair.town2
@@ -803,7 +715,6 @@ public object Nodes {
             }
         }
 
-        // apply enemy pairs
         for (townPair in townEnemyPairs) {
             val town1 = townPair.town1
             val town2 = townPair.town2
@@ -827,18 +738,6 @@ public object Nodes {
             }
         }
 
-        // apply alliances between towns in nations
-        // for ( nation in Nodes.nations.values ) {
-        //     for ( town1 in nation.towns ) {
-        //         for ( town2 in nation.towns ) {
-        //             if ( town1 !== town2 ) {
-
-        //             }
-        //         }
-        //     }
-        // }
-
-        // load truce from truce config file
         if (Files.exists(Config.pathTruce)) {
             try {
                 val truceString = String(Files.readAllBytes(Config.pathTruce))
@@ -853,7 +752,6 @@ public object Nodes {
     // Resource Node functions
     // ==============================================
 
-    // return number of resource node types
     public fun getResourceNodeCount(): Int = Nodes.resourceNodes.size
 
     // ==============================================
@@ -870,11 +768,7 @@ public object Nodes {
     // Territory functions
     // ==============================================
 
-    // calculate territory cost from:
-    // 1. territory size in chunks
-    // 2. list of resource names
     public fun calculateTerritoryCost(size: Int, resourceNodes: List<String>): Int {
-        // initialize with global cost rates
         var costConstant = Config.territoryCostBase
         var costScale = Config.territoryCostScale
 
@@ -891,7 +785,6 @@ public object Nodes {
         return cost
     }
 
-    // return number of territories in world
     public fun getTerritoryCount(): Int = Nodes.territories.size
 
     public fun getTerritoryFromId(id: TerritoryId): Territory? = Nodes.territories.get(id)
@@ -919,23 +812,16 @@ public object Nodes {
         return Nodes.territoryChunks.get(coord)?.territory
     }
 
-    /**
-     * Returns an iterable of all (terrId, territory) pairs in world.
-     */
     public fun iterTerritories(): Iterable<kotlin.collections.Map.Entry<TerritoryId, Territory>> = Nodes.territories.asIterable()
 
     public fun getChunkFromCoord(coord: Coord, world: World): Chunk? = Bukkit.getWorld(world.name)?.getChunkAt(coord.x, coord.z)
 
-    // default spawn location: returns region ~center of
-    // core chunk of home territory
-    // y-level is first empty air block
+    // Default spawn: ~center of the home core chunk, at the first air block
     public fun getDefaultSpawnLocation(territory: Territory): Location {
-        // get from ~middle of territory home chunk
         val homeChunk = territory.core
         val x = homeChunk.x * 16 + 8
         val z = homeChunk.z * 16 + 8
 
-        // iterate up in y to find first empty block
         val world = Bukkit.getWorlds().get(0)
         var y = 255
         while (y > 0) {
@@ -961,8 +847,7 @@ public object Nodes {
         }
     }
 
-    // loads a resident from UUID and other parameters
-    // used for deserializing from towns.json
+    // Used when deserializing towns.json
     public fun loadResident(
         uuid: UUID,
         claims: Int,
@@ -972,33 +857,26 @@ public object Nodes {
         trusted: Boolean,
         townCreateCooldown: Long,
     ) {
-        // get player name from UUID
-        // use online player if exists, else get from OfflinePlayer
         var playerName: String? = Bukkit.getPlayer(uuid)?.let { player ->
             player.name
         } ?: run {
             Bukkit.getOfflinePlayer(uuid)?.getName()
         }
 
-        // if player name null, player does not exist
         if (playerName == null) {
             return
         }
 
-        // create and add resident
         val resident = Resident(uuid, playerName)
         resident.prefix = prefix
         resident.suffix = suffix
         resident.claims = Math.min(claims, Config.playerClaimsMax) // in case config changed
         resident.claimsTime = claimsTime
 
-        // resident trusted status
         resident.trusted = trusted
 
-        // mark resident needs update
         resident.needsUpdate()
 
-        // set resident town create cooldown
         resident.townCreateCooldown = townCreateCooldown
 
         residents.put(uuid, resident)
@@ -1009,13 +887,10 @@ public object Nodes {
     public fun getResident(player: Player): Resident? = Nodes.residents.get(player.getUniqueId())
 
     public fun getResidentFromName(name: String): Resident? {
-        // get player from bukkit
         val player = Bukkit.getPlayer(name)
         if (player != null) {
             return Nodes.residents.get(player.getUniqueId())
-        }
-        // search through residents and try to match name
-        else {
+        } else {
             val playerNameLowercase = name.lowercase()
             for (r in Nodes.residents.values) {
                 if (r.name.lowercase() == playerNameLowercase) {
@@ -1041,7 +916,6 @@ public object Nodes {
         Nodes.needsSave = true
     }
 
-    // marks player as online
     public fun setResidentOnline(resident: Resident, player: Player) {
         val town = resident.town
         if (town != null) {
@@ -1054,9 +928,7 @@ public object Nodes {
         }
     }
 
-    // marks player as offline
-    // force player as input in case resident cannot access player
-    // if player already offline
+    // Takes the player explicitly since resident.player() is null once offline
     public fun setResidentOffline(resident: Resident, player: Player) {
         val town = resident.town
         if (town != null) {
@@ -1083,23 +955,19 @@ public object Nodes {
         return resident.chatMode
     }
 
-    // set player's town create cooldown
     public fun setResidentTownCreateCooldown(resident: Resident, cooldown: Long) {
         resident.townCreateCooldown = cooldown
         resident.needsUpdate()
         Nodes.needsSave = true
     }
 
-    // set resident's current claims time progress
     public fun setResidentClaimTimer(resident: Resident, time: Long) {
         resident.claimsTime = time
         resident.needsUpdate()
         Nodes.needsSave = true
     }
 
-    // update players online in each town, nation
     public fun refreshPlayersOnline() {
-        // remove players online in nations
         for (nation in Nodes.nations.values) {
             nation.playersOnline.clear()
         }
@@ -1120,12 +988,10 @@ public object Nodes {
         }
     }
 
-    // forces re-render of online player minimaps
     public fun renderMinimaps() {
         for (player in Bukkit.getOnlinePlayers()) {
             val resident = Nodes.getResident(player)
             if (resident?.minimap != null) {
-                // get current location coord
                 val loc = player.getLocation()
                 val coordX = kotlin.math.floor(loc.x).toInt()
                 val coordZ = kotlin.math.floor(loc.z).toInt()
@@ -1143,7 +1009,6 @@ public object Nodes {
     // - player becomes town leader
     // - territory at player's location becomes town home
     public fun createTown(name: String, territory: Territory, leader: Resident?): Result<Town> {
-        // get resident and spawn coordinate from leader if exists
         val leaderPlayer = leader?.player()
         var spawnpoint = if (leaderPlayer != null) {
             leaderPlayer.location
@@ -1166,20 +1031,16 @@ public object Nodes {
         val town = Town(UUID.randomUUID(), name, territory.id, leader, spawnpoint)
         town.claimsUsed = territory.cost
 
-        // set home territory town
         territory.town = town
 
         if (leader != null) {
             leader.town = town
 
-            // check how much player is over town claim limit
             val overClaimsPenalty: Int = Math.max(0, Config.initialOverClaimsAmountScale * (territory.cost - Config.townInitialClaims))
 
-            // give initial leader their max claims
             leader.claims = Math.max(0, Math.max(Config.playerClaimsMax, Config.townInitialClaims) - overClaimsPenalty)
             leader.claimsTime = 0L
 
-            // create nametag
             if (leaderPlayer !== null) {
                 Nametag.create(leaderPlayer)
             }
@@ -1192,14 +1053,12 @@ public object Nodes {
         Nodes.towns.put(name, town)
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(town)
     }
 
-    // load town from data
-    // used for deserializing from towns.json
+    // Used when deserializing towns.json
     public fun loadTown(
         uuid: UUID,
         name: String,
@@ -1230,7 +1089,6 @@ public object Nodes {
             null
         }
 
-        // make sure home territory exists
         val home = Nodes.getTerritoryFromId(TerritoryId(homeId))
         if (home == null) {
             System.err.println("Failed to create town $name with home (id = $homeId)")
@@ -1257,7 +1115,6 @@ public object Nodes {
         val town = Town(uuid, name, home.id, leaderAsResident, spawnpoint)
         leaderAsResident?.town = town
 
-        // add residents
         for (id in residents) {
             Nodes.getResidentFromUUID(id)?.let { r ->
                 town.residents.add(r)
@@ -1266,14 +1123,12 @@ public object Nodes {
             }
         }
 
-        // add officers
         for (id in officers) {
             Nodes.getResidentFromUUID(id)?.let { r ->
                 town.officers.add(r)
             }
         }
 
-        // add territory claims and claims power used
         for (id in territoryIds) {
             val terrId = TerritoryId(id)
             Nodes.getTerritoryFromId(terrId)?.let { terr ->
@@ -1283,8 +1138,7 @@ public object Nodes {
             }
         }
 
-        // add annexed territories
-        // (duplicated in territoryIds, so just add ids)
+        // Already in territoryIds, so only add the ids
         for (id in annexedTerritoryIds) {
             val terrId = TerritoryId(id)
             Nodes.getTerritoryFromId(terrId)?.let { terr ->
@@ -1295,55 +1149,44 @@ public object Nodes {
             }
         }
 
-        // add captured territories
         for (id in capturedTerritoryIds) {
             val terrId = TerritoryId(id)
             Nodes.getTerritoryFromId(terrId)?.let { terr ->
-                // check if territory already occupied, remove current occupier
-                // should never occur, but just in case
+                // Shouldn't happen, but clear any existing occupier
                 val currentOccupier: Town? = terr.occupier
                 if (currentOccupier != null) {
                     currentOccupier.captured.remove(terrId)
                 }
 
-                // capture territory for town
                 town.captured.add(terrId)
                 terr.occupier = town
             }
         }
 
-        // add saved income
         town.income.storage.putAll(income)
         town.income.storageSpawnEgg.putAll(incomeSpawnEgg)
 
-        // set town color
         if (color != null) {
             town.color = color
         }
 
-        // add permission flags
         for ((type, groups) in permissions) {
             town.permissions[type].clear()
             town.permissions[type].addAll(groups)
         }
 
-        // calculate max claims
         town.claimsBonus = claimsBonus
         town.claimsAnnexed = claimsAnnexed
         town.claimsPenalty = claimsPenalty
         town.claimsPenaltyTime = claimsPenaltyTime
         town.claimsMax = Nodes.calculateMaxClaims(town)
 
-        // set isOpen
         town.isOpen = isOpen
 
-        // add protected blocks
         town.protectedBlocks.addAll(protectedBlocks)
 
-        // set move home cooldown
         town.moveHomeCooldown = moveHomeCooldown
 
-        // load outposts
         for ((name, outpostData) in outposts) {
             val terrId = TerritoryId(outpostData.first)
             val spawn = outpostData.second
@@ -1360,45 +1203,36 @@ public object Nodes {
             }
         }
 
-        // save new town
         towns.put(name, town)
 
-        // mark dirty
         town.needsUpdate()
 
         return town
     }
 
     public fun destroyTown(town: Town) {
-        // remove town links backwards from creation:
-
-        // check if town last in nation, destroy nation first if last
         val nation = town.nation
         if (nation !== null) {
-            if (nation.towns.size == 1) { // last town in nation
+            if (nation.towns.size == 1) {
                 Nodes.destroyNation(nation)
             } else {
                 Nodes.removeTownFromNation(nation, town)
             }
         }
 
-        // remove territory claim links
         town.territories.forEach { terrId ->
             Nodes.getTerritoryFromId(terrId)?.town = null
         }
 
-        // remove occupied territories
         town.captured.forEach { terrId ->
             Nodes.getTerritoryFromId(terrId)?.occupier = null
         }
 
-        // remove resident town links
         town.residents.forEach { r ->
             r.town = null
             r.nation = null
             r.needsUpdate()
 
-            // remove resident nametag, and remove from nation players online list
             val player = r.player()
             if (player !== null) {
                 Nametag.destroy(player)
@@ -1409,24 +1243,20 @@ public object Nodes {
             }
         }
 
-        // remove all town alliances
         for (ally in town.allies) {
             ally.allies.remove(town)
             ally.needsUpdate()
         }
 
-        // remove all town enemies
         for (enemy in town.enemies) {
             enemy.enemies.remove(town)
             enemy.needsUpdate()
         }
 
-        // remove town from global
         Nodes.towns.remove(town.name)
 
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
     }
 
@@ -1435,7 +1265,6 @@ public object Nodes {
     public fun getTownFromName(name: String): Town? = towns.get(name)
 
     public fun getTownFromPlayer(player: Player): Town? {
-        // get resident
         val resident = Nodes.getResident(player)
         if (resident !== null) {
             return resident.town
@@ -1463,9 +1292,6 @@ public object Nodes {
         return matchedTowns
     }
 
-    /**
-     * Return town that owns chunk if it exists
-     */
     public fun getTownAtChunkCoord(cx: Int, cz: Int): Town? {
         val terr = Nodes.getTerritoryFromChunkCoords(cx, cz)
         if (terr !== null) {
@@ -1475,7 +1301,6 @@ public object Nodes {
         return null
     }
 
-    // set town's bonus claims
     public fun setClaimsBonus(town: Town, num: Int) {
         town.claimsBonus = num
         town.claimsMax = Nodes.calculateMaxClaims(town)
@@ -1483,7 +1308,6 @@ public object Nodes {
         Nodes.needsSave = true
     }
 
-    // set town's claims penalty
     public fun setClaimsPenalty(town: Town, num: Int) {
         town.claimsPenalty = num
         town.claimsMax = Nodes.calculateMaxClaims(town)
@@ -1491,7 +1315,6 @@ public object Nodes {
         Nodes.needsSave = true
     }
 
-    // set town's annexed claims penalty
     public fun setClaimsAnnexed(town: Town, num: Int) {
         town.claimsAnnexed = num
         town.claimsMax = Nodes.calculateMaxClaims(town)
@@ -1499,10 +1322,7 @@ public object Nodes {
         Nodes.needsSave = true
     }
 
-    // calculates and returns town's max claims
-    // NOTE: DOES NOT actually set town's max claims
-    // called should do:
-    // town.claimsMax = Nodes.calculateMaxClaims(town)
+    // Doesn't set town.claimsMax; callers assign the result
     public fun calculateMaxClaims(town: Town): Int {
         val numResidents = town.residents.size
 
@@ -1511,18 +1331,14 @@ public object Nodes {
             maxClaims += r.claims
         }
 
-        // apply bonus
         maxClaims += town.claimsBonus
 
-        // penalty from annexed territories
         maxClaims -= town.claimsAnnexed
 
-        // clamp to max
         if (Config.townClaimsMax > 0) {
             maxClaims = Math.min(Config.townClaimsMax, maxClaims)
         }
 
-        // check if town over max claims
         town.isOverClaimsMax = town.claimsUsed > maxClaims
 
         return maxClaims
@@ -1533,7 +1349,6 @@ public object Nodes {
     public fun claimsPenaltyDecay(dt: Long) {
         for (town in Nodes.towns.values) {
             if (town.claimsPenalty > 0) {
-                // update tick, run update if passed period
                 val elapsedTime = town.claimsPenaltyTime + dt
                 if (elapsedTime >= Config.townClaimsPenaltyDecayPeriod) {
                     town.claimsPenaltyTime = 0L
@@ -1558,7 +1373,6 @@ public object Nodes {
             val resident = Nodes.getResident(player)
             val town = resident?.town
             if (town !== null && resident.claims < Config.playerClaimsMax) {
-                // update tick, run update if passed period
                 val elapsedTime = resident.claimsTime + dt
                 if (elapsedTime >= Config.playerClaimsIncreasePeriod) {
                     resident.claimsTime = 0L
@@ -1581,7 +1395,7 @@ public object Nodes {
      * players if their town is over max claims
      */
     public fun overMaxClaimsReminder() {
-        if (!Config.overClaimsPenalty) { // skip reminder if over max claims disabled
+        if (!Config.overClaimsPenalty) {
             return
         }
 
@@ -1605,13 +1419,10 @@ public object Nodes {
      * if successful, or an TerritoryClaim error status.
      */
     public fun claimTerritory(town: Town, territory: Territory): Result<Territory> {
-        // check if territory already claimed
         if (territory.town != null) {
             return Result.failure(ErrorTerritoryHasClaim)
         }
 
-        // check if territory is connected to town's existing territories
-        // iterate this territory neighbors, check if any link to town
         var isNeighbor = false
         for (neighborId in territory.neighbors) {
             if (Nodes.getTerritoryFromId(neighborId)?.town === town) {
@@ -1623,44 +1434,35 @@ public object Nodes {
             return Result.failure(ErrorTerritoryNotConnected)
         }
 
-        // check if town has claims available
         if (!Config.overClaimsAllowClaim && territory.cost > town.claimsMax - town.claimsUsed) {
             return Result.failure(ErrorTooManyClaims)
         }
 
-        // passed checks, add territory to town
         town.territories.add(territory.id)
         territory.town = town
 
-        // increase claims power used
         town.claimsUsed += territory.cost
 
-        // mark dirty
         town.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(territory)
     }
 
     public fun unclaimTerritory(town: Town, territory: Territory): Result<Territory> {
-        // check if town owns territory
         if (!town.territories.contains(territory.id)) {
             return Result.failure(ErrorTerritoryNotInTown)
         }
 
-        // check if territory is town's home territory
         if (town.home == territory.id) {
             return Result.failure(ErrorTerritoryIsTownHome)
         }
 
-        // passed checks, remove territory from town
         town.territories.remove(territory.id)
         territory.town = null
 
-        // remove any outposts with this territory
         town.outposts.entries.removeAll({ (name, outpost) -> outpost.territory == territory.id })
 
         // if territory was not annexed, remove territory cost
@@ -1673,11 +1475,9 @@ public object Nodes {
             town.annexed.remove(territory.id)
         }
 
-        // mark dirty
         town.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(territory)
@@ -1687,31 +1487,24 @@ public object Nodes {
     // (e.g. territory must be connected, town has claims available, ...)
     // if successful, returns added territory
     public fun addTerritoryToTown(town: Town, territory: Territory): Result<Territory> {
-        // check territory not already occupied
         if (territory.town != null) {
             return Result.failure(ErrorTerritoryOwned)
         }
 
-        // add territory to town
         town.territories.add(territory.id)
         territory.town = town
 
-        // increase claims power used
         town.claimsUsed += territory.cost
 
-        // mark dirty
         town.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(territory)
     }
 
-    // makes territory occupied by town
     public fun captureTerritory(town: Town, territory: Territory) {
-        // check if territory already occupied, remove current occupier
         val currentOccupier: Town? = territory.occupier
         if (currentOccupier != null) {
             currentOccupier.captured.remove(territory.id)
@@ -1720,7 +1513,6 @@ public object Nodes {
             currentOccupier.needsUpdate()
         }
 
-        // handle capturing enemy territory
         if (territory.town != town) {
             town.captured.add(territory.id)
             territory.occupier = town
@@ -1729,24 +1521,30 @@ public object Nodes {
         town.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
     }
 
-    // release territory from town occupation
     public fun releaseTerritory(territory: Territory) {
-        // check if territory currently occupied, remove current occupier
         val currentOccupier: Town? = territory.occupier
         if (currentOccupier != null) {
             currentOccupier.captured.remove(territory.id)
             territory.occupier = null
-
             currentOccupier.needsUpdate()
-            Nodes.needsSave = true
-
-            // re-render minimaps
-            Nodes.renderMinimaps()
         }
+
+        for (coord in territory.chunks) {
+            val tc = Nodes.getTerritoryChunkFromCoord(coord) ?: continue
+            tc.occupier = null
+            tc.attacker = null
+            try {
+                phonon.nodes.war.FlagWar.chunkToAttacker[tc.coord]?.cancel()
+                phonon.nodes.war.FlagWar.occupiedChunks.remove(tc.coord)
+            } catch (_: Exception) {
+            }
+        }
+
+        Nodes.needsSave = true
+        Nodes.renderMinimaps()
     }
 
     /**
@@ -1766,9 +1564,7 @@ public object Nodes {
             return false
         }
 
-        // remove from old town
         if (oldTown !== null) {
-            // check if this is their home territory
             if (territory.id == oldTown.home && !phonon.nodes.war.Warzone.isWarzoneTown(oldTown)) { // Capturing home annexes the entire town: transfer all territories, then destroy the town.
                 val territoriesToTransfer = oldTown.territories.toList()
 
@@ -1788,23 +1584,37 @@ public object Nodes {
                     t.occupier = null
                 }
                 town.claimsMax = Nodes.calculateMaxClaims(town)
+// Plunder: move the defeated town's income to the annexer
+                oldTown.income.pushToStorage(force = true) // flush GUI into storage maps if open
+                for ((mat, amount) in oldTown.income.storage.toMap()) {
+                    if (amount > 0) {
+                        town.income.add(mat, amount)
+                    }
+                }
+                for ((egg, amount) in oldTown.income.storageSpawnEgg.toMap()) {
+                    if (amount > 0) {
+                        town.income.storageSpawnEgg[egg] =
+                            (town.income.storageSpawnEgg[egg] ?: 0) + amount
+                    }
+                }
+                oldTown.income.storage.clear()
+                oldTown.income.storageSpawnEgg.clear()
+
+                Message.broadcast(
+                    "${ChatColor.GOLD}[War] ${town.name} plundered ${oldTown.name}'s town!",
+                )
 
                 Nodes.destroyTown(oldTown)
 
                 Message.broadcast("${ChatColor.DARK_RED}${ChatColor.BOLD}Town ${oldTown.name} was completely annexed by ${town.name}")
-            }
-            // else, just a normal territory
-            else {
+            } else {
                 if (oldTown.annexed.contains(territory.id)) {
                     oldTown.annexed.remove(territory.id)
-                }
-                // if territory was not an annexed territory, adjust claims
-                else {
+                } else {
                     oldTown.claimsUsed -= territory.cost
                     oldTown.claimsAnnexed += territory.cost
                 }
 
-                // remove territory and re-calculate claims
                 oldTown.territories.remove(territory.id)
                 oldTown.claimsMax = Nodes.calculateMaxClaims(town)
 
@@ -1812,27 +1622,21 @@ public object Nodes {
             }
         }
 
-        // add territory to town and annexed territories
         town.territories.add(territory.id)
         town.annexed.add(territory.id)
         town.captured.remove(territory.id)
 
-        // update territory
         territory.town = town
         territory.occupier = null
 
         town.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return true
     }
 
-    // adds items to town's income
-    // used by taxation events in occupied/captured territories
-    // TODO: cleanup + rename this to "townIncomeAdd"
     public fun addToIncome(town: Town, material: Material, amount: Int, meta: Int = 0) {
         town.income.add(material, amount, meta)
         town.needsUpdate()
@@ -1858,7 +1662,7 @@ public object Nodes {
                 } else {
                     town.income.storage.remove(material)
                 }
-            } else { // remove all
+            } else {
                 town.income.storage.remove(material)
             }
         } else {
@@ -1875,7 +1679,6 @@ public object Nodes {
     }
 
     public fun setTownSpawn(town: Town, spawnpoint: Location): Boolean {
-        // enforce spawnpoint in town's home territory
         val territory = Nodes.getTerritoryFromChunk(spawnpoint.chunk)
         if (territory === null || territory.id != town.home) {
             return false
@@ -1888,31 +1691,33 @@ public object Nodes {
         return true
     }
 
-    public fun addResidentToTown(town: Town, resident: Resident) {
+    public fun addResidentToTown(town: Town, resident: Resident): Boolean {
+        val nation = town.nation
+        val player = resident.player()
+        if (nation != null && player != null) {
+            if (!RallyCap.canJoinNationTown(nation, player)) {
+                Message.error(player, RallyCap.denyMessage(nation))
+                return false
+            }
+        }
+
         town.residents.add(resident)
         resident.town = town
 
-        // update resident max claims
         resident.claims = Config.playerClaimsInitial
         resident.claimsTime = 0L
         town.claimsMax = Nodes.calculateMaxClaims(town)
 
-        // initialize player as untrusted
         resident.trusted = false
 
-        // add player to town online players
-        val player = resident.player()
         if (player !== null) {
             town.playersOnline.add(player)
         }
 
-        // add town nation to resident
-        val nation = town.nation
         if (nation !== null) {
             resident.nation = nation
             nation.residents.add(resident)
 
-            // add player to nation online players
             if (player !== null) {
                 nation.playersOnline.add(player)
             }
@@ -1922,10 +1727,10 @@ public object Nodes {
         resident.needsUpdate()
         Nodes.needsSave = true
 
-        // create nametag for player
         if (player !== null) {
             Nametag.create(player)
         }
+        return true
     }
 
     public fun removeResidentFromTown(town: Town, resident: Resident) {
@@ -1934,25 +1739,22 @@ public object Nodes {
         }
         town.residents.remove(resident)
         resident.town = null
+        phonon.nodes.plot.Plots.onResidentLeave(resident.uuid)
 
         val player = resident.player()
 
-        // remove town nation from resident
         val nation = town.nation
         if (nation !== null) {
             resident.nation = null
             nation.residents.remove(resident)
 
-            // remove player from nation online players
             if (player !== null) {
                 nation.playersOnline.remove(player)
             }
         }
 
-        // update max claims
         town.claimsMax = Nodes.calculateMaxClaims(town)
 
-        // remove player to town online players
         if (player !== null) {
             town.playersOnline.remove(player)
         }
@@ -1961,13 +1763,11 @@ public object Nodes {
         resident.needsUpdate()
         Nodes.needsSave = true
 
-        // delete player nametag
         if (player !== null) {
             Nametag.destroy(player)
         }
     }
 
-    // make player in town an officer
     public fun townAddOfficer(town: Town, resident: Resident): Boolean {
         if (resident.town !== town) {
             return false
@@ -1985,7 +1785,6 @@ public object Nodes {
         return true
     }
 
-    // remove player from officer status
     public fun townRemoveOfficer(town: Town, resident: Resident): Boolean {
         if (resident.town !== town) {
             return false
@@ -2014,25 +1813,20 @@ public object Nodes {
     public fun townSetLeader(town: Town, resident: Resident?) {
         if (resident !== null) {
             if (resident.town !== town) {
-                // must first be part of town, skipping
                 return
             }
 
-            // same town leader, ignore
             if (town.leader === resident) {
                 return
             }
 
-            // remove resident from officers if there
             town.officers.remove(resident)
 
             town.leader = resident
             town.needsUpdate()
             Nodes.needsSave = true
         } else {
-            // no resident input: remove current town leader
             if (town.leader === null) {
-                // no leader to remove, skipping
                 return
             }
 
@@ -2043,7 +1837,6 @@ public object Nodes {
     }
 
     public fun renameTown(town: Town, s: String): Boolean {
-        // check that new name not used
         if (Nodes.towns.contains(s)) {
             return false
         }
@@ -2055,13 +1848,11 @@ public object Nodes {
         Nodes.towns.put(s, town)
         town.needsUpdate()
 
-        // update residents in town and nation
         town.nation?.needsUpdate()
         for (r in town.residents) {
             r.needsUpdate()
         }
 
-        // update town allies/enemies
         for (t in town.enemies) {
             t.needsUpdate()
         }
@@ -2074,7 +1865,6 @@ public object Nodes {
         return true
     }
 
-    // view town income inventory gui
     public fun getTownIncomeInventory(town: Town): Inventory {
         // mark dirty if inventory not empty (player could take items)
         if (!town.income.empty()) {
@@ -2083,14 +1873,10 @@ public object Nodes {
         return town.income.getInventory()
     }
 
-    /**
-     * Set town permissions
-     */
     public fun setTownPermissions(town: Town, perm: TownPermissions, group: PermissionsGroup, flag: Boolean) {
-        // add perms
         if (flag == true) {
             town.permissions[perm].add(group)
-        } else { // remove perms
+        } else {
             town.permissions[perm].remove(group)
         }
 
@@ -2098,9 +1884,6 @@ public object Nodes {
         Nodes.needsSave = true
     }
 
-    /**
-     * set town's home territory
-     */
     public fun setTownHomeTerritory(town: Town, territory: Territory) {
         if (town !== territory.town) {
             return
@@ -2109,40 +1892,29 @@ public object Nodes {
             return
         }
 
-        // set town home
         town.home = territory.id
 
-        // set town spawn to new home territory
         town.spawnpoint = Nodes.getDefaultSpawnLocation(territory)
 
-        // set cooldown
         town.moveHomeCooldown = Config.townMoveHomeCooldown
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         town.needsUpdate()
         Nodes.needsSave = true
     }
 
-    // set town's move home cooldown period
     public fun setTownHomeMoveCooldown(town: Town, time: Long) {
         town.moveHomeCooldown = time
         town.needsUpdate()
         Nodes.needsSave = true
     }
 
-    /**
-     * Create an outpost for a town
-     * Returns true on success, false on failure
-     */
     public fun createTownOutpost(town: Town, name: String, territory: Territory): Boolean {
-        // town must own the territory
         if (!town.territories.contains(territory.id)) {
             return false
         }
 
-        // town must not have outpost of same name
         if (town.outposts.contains(name)) {
             return false
         }
@@ -2164,10 +1936,6 @@ public object Nodes {
         return true
     }
 
-    /**
-     * Remove town outpost with given name
-     * Returns true on success, false on failure
-     */
     public fun destroyTownOutpost(town: Town, name: String): Boolean {
         val outpost = town.outposts.remove(name)
         if (outpost === null) {
@@ -2180,12 +1948,7 @@ public object Nodes {
         return true
     }
 
-    /**
-     * Set a town outpost's spawn location.
-     * Returns true on success, false on failure
-     */
     public fun setOutpostSpawn(town: Town, outpost: TownOutpost, spawn: Location): Boolean {
-        // verify location is inside territory
         if (Nodes.getTerritoryFromChunk(spawn.chunk)?.id != outpost.territory) {
             return false
         }
@@ -2198,24 +1961,18 @@ public object Nodes {
         return true
     }
 
-    // when inventory close, require save because items could have
-    // been moved
+    // Items may have been moved, so require a save
     internal fun onTownIncomeInventoryClose() {
         Nodes.needsSave = true
     }
 
-    // set town's isOpen state
     internal fun setTownOpen(town: Town, isOpen: Boolean) {
         town.isOpen = isOpen
         town.needsUpdate()
         Nodes.needsSave = true
     }
 
-    /**
-     * Run cooldown tick, with change in time dt
-     */
     internal fun townMoveHomeCooldownTick(dt: Long) {
-        // reduce town move home territory cooldown
         for (town in Nodes.towns.values) {
             if (town.moveHomeCooldown > 0) {
                 town.moveHomeCooldown = Math.max(0, town.moveHomeCooldown - dt)
@@ -2226,11 +1983,7 @@ public object Nodes {
         }
     }
 
-    /**
-     * Reduce resident town create cooldown tick by dt
-     */
     internal fun residentTownCreateCooldownTick(dt: Long) {
-        // reduce player create town cooldown
         for (resident in Nodes.residents.values) {
             if (resident.townCreateCooldown > 0) {
                 resident.townCreateCooldown = Math.max(0, resident.townCreateCooldown - dt)
@@ -2264,7 +2017,6 @@ public object Nodes {
         val nation = Nation(UUID.randomUUID(), name, town)
         nations.put(name, nation)
 
-        // add town to nation
         nation.towns.add(town)
         town.nation = nation
 
@@ -2275,7 +2027,6 @@ public object Nodes {
         }
         town.allies.clear()
 
-        // add nation to all residents in creator's town
         for (r in town.residents) {
             r.nation = nation
             r.needsUpdate()
@@ -2285,18 +2036,16 @@ public object Nodes {
         nation.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(nation)
     }
 
-    // load nation from data
-    // used for deserializing from towns.json
+    // Used when deserializing towns.json
     public fun loadNation(
         uuid: UUID,
         name: String,
-        capitalName: String, // name of capital city
+        capitalName: String,
         color: Color?,
         towns: ArrayList<String>,
     ): Nation {
@@ -2307,12 +2056,10 @@ public object Nodes {
 
         val nation = Nation(uuid, name, capital)
 
-        // set nation color
         if (color != null) {
             nation.color = color
         }
 
-        // add towns
         for (townName in towns) {
             val town = Nodes.getTownFromName(townName)
             if (town != null) {
@@ -2328,17 +2075,14 @@ public object Nodes {
             }
         }
 
-        // mark dirty
         nation.needsUpdate()
 
-        // save new nation
         nations.put(name, nation)
 
         return nation
     }
 
     public fun destroyNation(nation: Nation) {
-        // remove nation level alliances and enemies
         for (ally in nation.allies) {
             ally.allies.remove(nation)
             ally.needsUpdate()
@@ -2348,15 +2092,12 @@ public object Nodes {
             enemy.needsUpdate()
         }
 
-        // remove town links
         for (town in nation.towns) {
-            // remove all residents links
             for (r in town.residents) {
                 r.nation = null
                 r.needsUpdate()
             }
 
-            // remove all town alliances and enemies
             for (ally in town.allies) {
                 ally.allies.remove(town)
                 ally.needsUpdate()
@@ -2377,7 +2118,6 @@ public object Nodes {
 
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
     }
 
@@ -2386,17 +2126,14 @@ public object Nodes {
     public fun getNationFromName(name: String): Nation? = nations.get(name)
 
     public fun addTownToNation(nation: Nation, town: Town): Result<Town> {
-        // check town does not belong to nation
         if (town.nation != null) {
             return Result.failure(ErrorTownHasNation)
         }
 
-        // add town to nation
         nation.towns.add(town)
         town.nation = nation
         town.needsUpdate()
 
-        // add nation to residents
         for (r in town.residents) {
             r.nation = nation
             nation.residents.add(r)
@@ -2434,23 +2171,19 @@ public object Nodes {
         nation.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(town)
     }
 
     public fun removeTownFromNation(nation: Nation, town: Town): Result<Town> {
-        // check town belongs to nation
         if (town.nation !== nation) {
             return Result.failure(ErrorNationDoesNotHaveTown)
         }
 
-        // remove town to nation
         nation.towns.remove(town)
         town.nation = null
 
-        // remove nation from residents
         for (r in town.residents) {
             r.nation = null
             nation.residents.remove(r)
@@ -2461,13 +2194,10 @@ public object Nodes {
         // -> cleans up allies, enemies, etc... and global references
         if (nation.towns.size == 0) {
             Nodes.destroyNation(nation)
-        }
-        // set new leader for nation if this was capital
-        else {
+        } else {
             if (town === nation.capital) {
                 val newCapital: Town = nation.towns.first()
                 nation.capital = newCapital
-                // print message to players in new capital
                 for (r in newCapital.residents) {
                     val player = r.player()
                     if (player !== null) {
@@ -2477,7 +2207,6 @@ public object Nodes {
             }
         }
 
-        // remove all town alliances and enemies
         for (ally in town.allies) {
             ally.allies.remove(town)
             ally.needsUpdate()
@@ -2494,7 +2223,6 @@ public object Nodes {
         nation.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(town)
@@ -2507,7 +2235,6 @@ public object Nodes {
     }
 
     public fun renameNation(nation: Nation, s: String): Boolean {
-        // check that new name not used
         if (Nodes.nations.contains(s)) {
             return false
         }
@@ -2517,7 +2244,6 @@ public object Nodes {
         Nodes.nations.put(s, nation)
         nation.needsUpdate()
 
-        // update nation towns and residents
         for (town in nation.towns) {
             town.needsUpdate()
             for (r in town.residents) {
@@ -2525,7 +2251,6 @@ public object Nodes {
             }
         }
 
-        // update nation allies/enemies
         for (n in nation.enemies) {
             n.needsUpdate()
         }
@@ -2595,7 +2320,6 @@ public object Nodes {
                 return 0
             }
 
-            // determine integer part and fractional remainder for random roll
             val intPart = kotlin.math.floor(rate)
             val fracPart = kotlin.math.max(0.0, rate - intPart)
 
@@ -2613,17 +2337,20 @@ public object Nodes {
             return intPart.toInt() + fracAmount
         }
 
-        // tax and kept item rates for occupied territories
         val taxRate = Config.taxIncomeRate.coerceIn(0.0, 1.0)
         val keptRate = 1.0 - taxRate
 
         for (town in Nodes.towns.values) {
             try {
-                val thisTownIncome = EnumMap<Material, Double>(Material::class.java) // hard-coded value for this town
+                val thisTownIncome = EnumMap<Material, Double>(Material::class.java)
                 val townIncomes = HashMap<Town, EnumMap<Material, Double>>()
 
                 // inject this town, to unify claims penalty logic later
                 townIncomes[town] = thisTownIncome
+
+                val cutOff = SupplyLines.cutOff(town)
+                val cutOffSet = cutOff.toHashSet()
+                val cutMultiplier = SupplyLines.incomeMultiplier()
 
                 for (terrId in town.territories) {
                     val territory = Nodes.getTerritoryFromId(terrId)
@@ -2631,53 +2358,53 @@ public object Nodes {
                         continue
                     }
 
+                    val supply = if (terrId in cutOffSet) cutMultiplier else 1.0
+
                     val occupier = territory.occupier
                     if (occupier != null) {
                         val occupierIncome = townIncomes.getOrPut(occupier) { EnumMap<Material, Double>(Material::class.java) }
 
-                        // regular item income
                         for ((material, amount) in territory.income) {
                             occupierIncome[material] = (occupierIncome[material] ?: 0.0) + (amount * taxRate)
-                            thisTownIncome[material] = (thisTownIncome[material] ?: 0.0) + (amount * keptRate)
+                            thisTownIncome[material] = (thisTownIncome[material] ?: 0.0) + (amount * keptRate * supply)
                         }
-
-                        // TODO: 1.12 compatibility? spawn egg income
-                        // for ( (entityType, rate) in territory.incomeSpawnEgg ) {
-                        //     TODO
-                        // }
                     } else {
-                        // regular item income
                         for ((material, amount) in territory.income) {
-                            thisTownIncome[material] = (thisTownIncome[material] ?: 0.0) + amount
+                            thisTownIncome[material] = (thisTownIncome[material] ?: 0.0) + (amount * supply)
                         }
-
-                        // TODO: 1.12 compatibility? spawn egg income
-                        // for ( (entityType, rate) in territory.incomeSpawnEgg ) {
-                        //     TODO
-                        // }
                     }
                 }
 
-                // apply income modifiers for each town, then add items to town income chest
+                SupplyLines.notifyCutOff(town, cutOff)
+
                 for ((townForIncome, income) in townIncomes) {
                     var incomeModifier = 1.0
 
-                    // over max claims penalty
                     if (Config.overClaimsPenalty && townForIncome.isOverClaimsMax == true) {
                         incomeModifier *= (1.0 - Config.overClaimsMaxPenalty)
                     }
 
-                    // income claims power scaling
                     if (Config.incomeScaleByClaimPower) {
                         val claimsUsedRatio = townForIncome.claimsMax.toDouble() / townForIncome.claimsUsed.toDouble()
                         val incomeClaimsPowerScale = claimsUsedRatio.coerceIn(Config.incomeScaleMin, Config.incomeScaleMax)
                         incomeModifier *= incomeClaimsPowerScale
                     }
 
-                    // we can do any other income modifiers here in the future
+                    val overlord = if (townForIncome === town) Vassals.overlordOf(town) else null
+                    val tribute = if (overlord != null) Vassals.tributeRate(town) else 0.0
 
-                    // add items to town income chest
                     for ((material, amount) in income) {
+                        if (overlord != null && tribute > 0.0) {
+                            val toOverlord = rateToAmount(amount * incomeModifier * tribute)
+                            if (toOverlord > 0) {
+                                Nodes.addToIncome(overlord, material, toOverlord)
+                            }
+                            val kept = rateToAmount(amount * incomeModifier * (1.0 - tribute))
+                            if (kept > 0) {
+                                Nodes.addToIncome(town, material, kept)
+                            }
+                            continue
+                        }
                         val amountInt = rateToAmount(amount * incomeModifier)
                         if (amountInt > 0) {
                             Nodes.addToIncome(town, material, amountInt)
@@ -2685,18 +2412,13 @@ public object Nodes {
                     }
                 }
 
-                // TODO: 1.12 compatibility? spawn egg income
-                // for ( (entityType, rate) in territory.incomeSpawnEgg ) {
-                //     var amount: Int = rateToAmount(rate)
-                //     town.income.add(Material.MONSTER_EGG, amount, entityType.ordinal)
-                // }
+                Fortifications.chargeUpkeep(town)
             } catch (err: Exception) {
                 Nodes.logger?.severe("Error running income for town ${town.name}")
                 err.printStackTrace()
             }
         }
 
-        // message players ingame that income collected
         Message.broadcast("Towns have collected income (use \"/t income\" to get)")
     }
 
@@ -2732,7 +2454,6 @@ public object Nodes {
     public fun disableWar() {
         Nodes.war.disable()
 
-        // re-render minimaps
         Nodes.renderMinimaps()
     }
 
@@ -2741,12 +2462,10 @@ public object Nodes {
      * This should be the main function used.
      */
     public fun addEnemy(town: Town, enemy: Town): Result<Boolean> {
-        // make sure towns are not allies or in truce
         if (town.allies.contains(enemy) || Truce.contains(town, enemy)) {
             return Result.failure(ErrorWarAllyOrTruce)
         }
 
-        // check if towns already enemies
         if (town.enemies.contains(enemy) || enemy.enemies.contains(town)) {
             return Result.failure(ErrorAlreadyEnemies)
         }
@@ -2755,26 +2474,19 @@ public object Nodes {
         val enemyNation = enemy.nation
 
         if (townNation !== null) {
-            // nation-nation war
             if (enemyNation !== null) {
-                // civil war boogaloo
                 if (enemyNation === townNation) {
                     town.enemies.add(enemy)
                     enemy.enemies.add(town)
 
-                    // remove ally status
                     town.allies.remove(enemy)
                     enemy.allies.remove(town)
-                }
-                // default to nation-nation war
-                else {
+                } else {
                     if (town === townNation.capital) { // only nation leading town declare war
                         return nationAddEnemy(townNation, enemyNation)
                     }
                 }
-            }
-            // nation-town war
-            else {
+            } else {
                 for (t in townNation.towns) {
                     t.enemies.add(enemy)
                     enemy.enemies.add(t)
@@ -2782,10 +2494,7 @@ public object Nodes {
                     t.needsUpdate()
                 }
             }
-        }
-        // town declaring war without nation
-        else {
-            // town-nation war
+        } else {
             if (enemyNation !== null) {
                 for (t in enemyNation.towns) {
                     t.enemies.add(town)
@@ -2793,9 +2502,7 @@ public object Nodes {
 
                     t.needsUpdate()
                 }
-            }
-            // town-town war
-            else {
+            } else {
                 town.enemies.add(enemy)
                 enemy.enemies.add(town)
             }
@@ -2805,7 +2512,6 @@ public object Nodes {
         enemy.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
@@ -2820,23 +2526,17 @@ public object Nodes {
         val enemyNation = enemy.nation
 
         if (townNation !== null) {
-            // nation-nation war
             if (enemyNation !== null) {
-                // civil war boogaloo
                 if (enemyNation === townNation) {
                     town.enemies.remove(enemy)
                     enemy.enemies.remove(town)
 
                     town.allies.add(enemy)
                     enemy.allies.add(town)
-                }
-                // default to nation-nation war
-                else {
+                } else {
                     return nationRemoveEnemy(townNation, enemyNation)
                 }
-            }
-            // nation-town war
-            else {
+            } else {
                 for (t in townNation.towns) {
                     t.enemies.remove(enemy)
                     enemy.enemies.remove(t)
@@ -2844,10 +2544,7 @@ public object Nodes {
                     t.needsUpdate()
                 }
             }
-        }
-        // town declaring war without nation
-        else {
-            // town-nation war
+        } else {
             if (enemyNation !== null) {
                 for (t in enemyNation.towns) {
                     t.enemies.remove(town)
@@ -2855,9 +2552,7 @@ public object Nodes {
 
                     t.needsUpdate()
                 }
-            }
-            // town-town war
-            else {
+            } else {
                 town.enemies.remove(enemy)
                 enemy.enemies.remove(town)
             }
@@ -2867,7 +2562,6 @@ public object Nodes {
         enemy.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
@@ -2880,12 +2574,10 @@ public object Nodes {
     public fun addAlly(town: Town, other: Town): Result<Boolean> {
         val pm = Bukkit.getPluginManager()
 
-        // towns already allies
         if (town.allies.contains(other) && other.allies.contains(town)) {
             return Result.failure(ErrorAlreadyAllies)
         }
 
-        // cannot ally enemies
         if (town.enemies.contains(other) || other.enemies.contains(town)) {
             return Result.failure(ErrorAlreadyEnemies)
         }
@@ -2894,12 +2586,9 @@ public object Nodes {
         val otherNation = other.nation
 
         if (townNation !== null) {
-            // nation-nation
             if (otherNation !== null && townNation !== otherNation) {
                 Nodes.nationAddAlly(townNation, otherNation)
-            }
-            // nation-town
-            else {
+            } else {
                 for (t in townNation.towns) {
                     t.allies.add(other)
                     other.allies.add(town)
@@ -2908,10 +2597,7 @@ public object Nodes {
                     pm.callEvent(AllianceCreatedEvent(t, other))
                 }
             }
-        }
-        // town allying without nation
-        else {
-            // town-nation
+        } else {
             if (otherNation !== null) {
                 for (t in otherNation.towns) {
                     t.allies.add(town)
@@ -2920,9 +2606,7 @@ public object Nodes {
                     t.needsUpdate()
                     pm.callEvent(AllianceCreatedEvent(town, t))
                 }
-            }
-            // town-town
-            else {
+            } else {
                 town.allies.add(other)
                 other.allies.add(town)
                 pm.callEvent(AllianceCreatedEvent(town, other))
@@ -2933,14 +2617,12 @@ public object Nodes {
         other.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
     }
 
     public fun removeAlly(town: Town, other: Town): Result<Boolean> {
-        // not currently allies
         if (!town.allies.contains(other) || !other.allies.contains(town)) {
             return Result.failure(ErrorNotAllies)
         }
@@ -2949,12 +2631,9 @@ public object Nodes {
         val otherNation = other.nation
 
         if (townNation !== null) {
-            // nation-nation
             if (otherNation !== null && townNation !== otherNation) {
                 Nodes.nationRemoveAlly(townNation, otherNation)
-            }
-            // nation-town
-            else {
+            } else {
                 for (t in townNation.towns) {
                     t.allies.remove(other)
                     other.allies.remove(town)
@@ -2962,10 +2641,7 @@ public object Nodes {
                     t.needsUpdate()
                 }
             }
-        }
-        // town allying without nation
-        else {
-            // town-nation
+        } else {
             if (otherNation !== null) {
                 for (t in otherNation.towns) {
                     t.allies.remove(town)
@@ -2973,9 +2649,7 @@ public object Nodes {
 
                     t.needsUpdate()
                 }
-            }
-            // town-town
-            else {
+            } else {
                 town.allies.remove(other)
                 other.allies.remove(town)
             }
@@ -2985,50 +2659,39 @@ public object Nodes {
         other.needsUpdate()
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
     }
 
     public fun addTruce(town: Town, other: Town): Result<Boolean> {
-        // towns already under truce
         if (Truce.contains(town, other)) {
             return Result.failure(ErrorAlreadyTruce)
         }
 
-        // truce start time
         val time = System.currentTimeMillis()
 
         val townNation = town.nation
         val otherNation = other.nation
 
         if (townNation !== null) {
-            // nation-nation
             if (otherNation !== null && townNation !== otherNation) {
                 for (t in townNation.towns) {
                     for (other in otherNation.towns) {
                         Truce.create(t, other, time)
                     }
                 }
-            }
-            // nation-town
-            else {
+            } else {
                 for (t in townNation.towns) {
                     Truce.create(t, other, time)
                 }
             }
-        }
-        // town allying without nation
-        else {
-            // town-nation
+        } else {
             if (otherNation !== null) {
                 for (t in otherNation.towns) {
                     Truce.create(town, t, time)
                 }
-            }
-            // town-town
-            else {
+            } else {
                 Truce.create(town, other, time)
             }
         }
@@ -3056,12 +2719,10 @@ public object Nodes {
     // -> sets all towns in each nation as enemies
     // returns true on success
     private fun nationAddEnemy(nation: Nation, enemy: Nation): Result<Boolean> {
-        // make sure nations are not allies or in truce
         if (nation.allies.contains(enemy) || Truce.contains(nation.capital, enemy.capital)) {
             return Result.failure(ErrorWarAllyOrTruce)
         }
 
-        // check if nations already enemies
         if (nation.enemies.contains(enemy) && enemy.enemies.contains(nation)) {
             return Result.failure(ErrorAlreadyEnemies)
         }
@@ -3069,7 +2730,6 @@ public object Nodes {
         nation.enemies.add(enemy)
         enemy.enemies.add(nation)
 
-        // mark all towns in each nation as enemies
         for (nationTown in nation.towns) {
             for (enemyTown in enemy.towns) {
                 nationTown.enemies.add(enemyTown)
@@ -3082,7 +2742,6 @@ public object Nodes {
 
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
@@ -3092,7 +2751,6 @@ public object Nodes {
         nation.enemies.remove(enemy)
         enemy.enemies.remove(nation)
 
-        // remove enemy status between towns in each nation
         for (nationTown in nation.towns) {
             for (enemyTown in enemy.towns) {
                 nationTown.enemies.remove(enemyTown)
@@ -3105,22 +2763,18 @@ public object Nodes {
 
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
     }
 
-    // add alliance between two nations and their towns (bidirectional)
     private fun nationAddAlly(nation: Nation, ally: Nation): Result<Boolean> {
         val pm = Bukkit.getPluginManager()
 
-        // make sure nations are not enemies
         if (nation.enemies.contains(ally) || ally.enemies.contains(nation)) {
             return Result.failure(ErrorAlreadyEnemies)
         }
 
-        // check if nations already have alliance
         if (nation.allies.contains(ally) && ally.allies.contains(nation)) {
             return Result.failure(ErrorAlreadyAllies)
         }
@@ -3128,7 +2782,6 @@ public object Nodes {
         nation.allies.add(ally)
         ally.allies.add(nation)
 
-        // mark all towns in each nation as enemies
         for (nationTown in nation.towns) {
             for (allyTown in ally.towns) {
                 nationTown.allies.add(allyTown)
@@ -3143,7 +2796,6 @@ public object Nodes {
 
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
@@ -3153,7 +2805,6 @@ public object Nodes {
         nation.allies.remove(ally)
         ally.allies.remove(nation)
 
-        // mark all towns in each nation as enemies
         for (nationTown in nation.towns) {
             for (allyTown in ally.towns) {
                 nationTown.allies.remove(allyTown)
@@ -3166,20 +2817,14 @@ public object Nodes {
 
         Nodes.needsSave = true
 
-        // re-render minimaps
         Nodes.renderMinimaps()
 
         return Result.success(true)
     }
 
-    /**
-     * Run the truce tick
-     */
     public fun truceTick() {
-        // current time
         val time = System.currentTimeMillis()
 
-        // get list of expired truces
         val expired: List<TownPair> = Truce.truces.asSequence()
             .filter({ (towns, startTime) ->
                 (time - startTime) > Config.trucePeriod
@@ -3189,12 +2834,10 @@ public object Nodes {
             })
             .toList()
 
-        // remove expired truces
         for (towns in expired) {
             Nodes.removeTruce(towns.town1, towns.town2)
         }
 
-        // save truce.json file
         if (Truce.needsUpdate == true) {
             Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, Truce.saveTask())
             Truce.needsUpdate = false
@@ -3214,9 +2857,6 @@ public object Nodes {
         }
     }
 
-    /**
-     * Get diplomatic relationship between two towns
-     */
     public fun getRelationshipOfTownToTown(playerTown: Town?, otherTown: Town?): DiplomaticRelationship {
         if (playerTown !== null && otherTown !== null) {
             if (playerTown === otherTown) {
@@ -3256,19 +2896,12 @@ public object Nodes {
     // Chest protection functions
     // ==============================================
 
-    /**
-     * Sets resident trust
-     */
     internal fun setResidentTrust(resident: Resident, trust: Boolean) {
         resident.trusted = trust
         resident.needsUpdate()
         Nodes.needsSave = true
     }
 
-    /**
-     * Add event listener for protecting/unprotecting chests
-     * with mouse clicks
-     */
     internal fun startProtectingChests(resident: Resident) {
         val player = resident.player()
         if (player === null) {
@@ -3280,7 +2913,6 @@ public object Nodes {
             return
         }
 
-        // check that resident is leader or officer
         if (resident !== town.leader && !town.officers.contains(resident)) {
             return
         }
@@ -3288,16 +2920,12 @@ public object Nodes {
         resident.isProtectingChests = true
     }
 
-    /**
-     * Remove event listener for protecting chests
-     */
     internal fun stopProtectingChests(resident: Resident) {
         val player = resident.player()
         if (player === null) {
             return
         }
 
-        // remove resident links
         resident.isProtectingChests = false
     }
 
@@ -3307,7 +2935,6 @@ public object Nodes {
      * Protect: true/false setting for protecting or unprotecting
      */
     internal fun protectTownChest(town: Town, block: Block, protect: Boolean) {
-        // get connected chest blocks
         fun getConnectedBlocks(block: Block): List<Block> {
             val type = block.type
             if (type == Material.CHEST || type == Material.TRAPPED_CHEST) {
@@ -3318,7 +2945,6 @@ public object Nodes {
                     if (inventory is DoubleChestInventory) {
                         val doubleChest = inventory.getHolder() as DoubleChest
 
-                        // get sides and add to blocks
                         val leftSide: Block = (doubleChest.getLeftSide() as Chest).block
                         val rightSide: Block = (doubleChest.getRightSide() as Chest).block
 
@@ -3330,7 +2956,6 @@ public object Nodes {
             return listOf(block)
         }
 
-        // adding protection: get connected blocks, else only use block
         val blocks: List<Block> = if (protect == true) {
             getConnectedBlocks(block)
         } else {
@@ -3351,10 +2976,6 @@ public object Nodes {
         Nodes.needsSave = true
     }
 
-    /**
-     * Generate particles at town's protected chests viewed by
-     * input resident
-     */
     internal fun showProtectedChests(town: Town, resident: Resident) {
         val player = resident.player()
         if (player === null) {
@@ -3363,7 +2984,6 @@ public object Nodes {
 
         val protectedBlocks = town.protectedBlocks
 
-        // create repeating event to spawn particles each second
         val task = object : BukkitRunnable() {
             private val particle = Particle.HAPPY_VILLAGER
             private val particleCount = 3
@@ -3375,13 +2995,11 @@ public object Nodes {
 
             public override fun run() {
                 for (block in protectedBlocks) {
-                    // corners
                     val location1 = Location(block.world, block.x.toDouble() + 0.1, block.y.toDouble() + 0.5, block.z.toDouble() + 0.1)
                     val location2 = Location(block.world, block.x.toDouble() + 0.1, block.y.toDouble() + 0.5, block.z.toDouble() + 0.9)
                     val location3 = Location(block.world, block.x.toDouble() + 0.9, block.y.toDouble() + 0.5, block.z.toDouble() + 0.1)
                     val location4 = Location(block.world, block.x.toDouble() + 0.9, block.y.toDouble() + 0.5, block.z.toDouble() + 0.9)
 
-                    // centers
                     val location5 = Location(block.world, block.x.toDouble() + 0.5, block.y.toDouble() + 0.5, block.z.toDouble())
                     val location6 = Location(block.world, block.x.toDouble(), block.y.toDouble() + 0.5, block.z.toDouble() + 0.5)
                     val location7 = Location(block.world, block.x.toDouble() + 0.5, block.y.toDouble() + 0.5, block.z.toDouble() + 1.0)
@@ -3411,8 +3029,6 @@ public object Nodes {
     // ==============================================
     // Port functions
     // ==============================================
-    // load port from data
-    // used for deserializing from ports.json
     public fun loadPort(
         name: String,
         locX: Int,
@@ -3422,24 +3038,19 @@ public object Nodes {
     ): Port? {
         val port = Port(name, locX, locZ, groups, isPublic)
 
-        // save new port
         ports.put(name, port)
 
-        // for each port, map the chunk its in to it
         val chunk = listOf(Math.floorDiv(locX, 16), Math.floorDiv(locZ, 16))
         chunkToPort.put(chunk, port)
 
-        // mark dirty
         port.needsUpdate()
 
         return port
     }
 
     public fun destroyPort(port: Port) {
-        // remove from ports map
         Nodes.ports.remove(port.name)
 
-        // remove chunk mappings
         val chunk = listOf(Math.floorDiv(port.locX, 16), Math.floorDiv(port.locZ, 16))
         chunkToPort.remove(chunk)
 
@@ -3462,7 +3073,6 @@ public object Nodes {
     }
 
     public fun destroyPortGroup(portGroup: PortGroup) {
-        // remove from portGroups map
         Nodes.portGroups.remove(portGroup.name)
 
         Nodes.needsSave = true
@@ -3475,21 +3085,17 @@ public object Nodes {
         groups: HashSet<PortGroup>,
         isPublic: Boolean,
     ): Result<Port> {
-        // check if port already exists
         if (ports.containsKey(name)) {
             return Result.failure(ErrorPortExists)
         }
 
         val port = Port(name, locX, locZ, groups, isPublic)
 
-        // save new port
         ports.put(name, port)
 
-        // for each port, map the chunk its in to it
         val chunk = listOf(Math.floorDiv(locX, 16), Math.floorDiv(locZ, 16))
         chunkToPort.put(chunk, port)
 
-        // mark dirty
         port.needsUpdate()
         needsSave = true
 
@@ -3497,7 +3103,6 @@ public object Nodes {
     }
 
     public fun addPortToGroup(port: Port, group: PortGroup): Result<Port> {
-        // check port is not already in this group
         if (port.groups.contains(group)) {
             return Result.failure(ErrorPortInGroup)
         }
@@ -3510,7 +3115,6 @@ public object Nodes {
     }
 
     public fun removePortFromGroup(port: Port, group: PortGroup) {
-        // check port is in group
         if (!port.groups.contains(group)) {
             return
         }
@@ -3544,15 +3148,11 @@ public object Nodes {
         return chunk.territory.town
     }
 
-    /**
-     * Check if two ports share a group
-     */
     fun sharePortGroups(port1: Port, port2: Port): Boolean = port1.groups.any { it in port2.groups }
 
     // ==============================================
     // Hooks to external functions
     // ==============================================
-    // just sets a flag that dynmap exists
     internal fun hookDynmap() {
         Nodes.dynmap = true
     }

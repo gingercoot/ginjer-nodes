@@ -35,7 +35,7 @@ public class NodesIncomeInventoryListener : Listener {
                     }
                     else -> {}
                 }
-            } else { // bottom inventory
+            } else {
                 when (event.getAction()) {
                     InventoryAction.MOVE_TO_OTHER_INVENTORY,
                     -> {

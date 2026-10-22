@@ -6,9 +6,6 @@ package phonon.nodes.objects
 
 import phonon.nodes.serdes.SaveState
 
-/**
- * Player warpable port
- */
 data class Port(
     val name: String,
     val locX: Int,
@@ -19,7 +16,6 @@ data class Port(
     val chunkX = Math.floorDiv(locX, 16)
     val chunkZ = Math.floorDiv(locZ, 16)
 
-    // json string and memoization flag
     private var saveState: PortSaveState
 
     @Suppress("PropertyName")
@@ -29,9 +25,6 @@ data class Port(
         this.saveState = PortSaveState(this)
     }
 
-    /**
-     * Port save state for JSON serialization
-     */
     public class PortSaveState(p: Port) : SaveState {
         public val name = p.name
         public val locX = p.locX
@@ -42,7 +35,6 @@ data class Port(
         public override var jsonString: String? = null
 
         public override fun createJsonString(): String {
-            // serialize groups as JSON array of strings
             val groupsJson = groups.joinToString(",", "[", "]") { "\"${it.name}\"" }
 
             val jsonString = (
@@ -61,14 +53,10 @@ data class Port(
         public override fun hashCode(): Int = this.name.hashCode()
     }
 
-    // function to let client flag this object as dirty
     public fun needsUpdate() {
         this._needsUpdate = true
     }
 
-    // wrapper to return self as savestate
-    // - returns memoized copy if needsUpdate false
-    // - otherwise, parses self
     public fun getSaveState(): PortSaveState {
         if (this._needsUpdate) {
             this.saveState = PortSaveState(this)
@@ -78,13 +66,9 @@ data class Port(
     }
 }
 
-/**
- * Group of ports
- */
 data class PortGroup(
     val name: String,
 ) {
-    // json string and memoization flag
     private var saveState: PortGroupSaveState
 
     @Suppress("PropertyName")
@@ -94,9 +78,6 @@ data class PortGroup(
         this.saveState = PortGroupSaveState(this)
     }
 
-    /**
-     * Port group save state for JSON serialization
-     */
     public class PortGroupSaveState(p: PortGroup) : SaveState {
         public val name = p.name
 
@@ -115,14 +96,10 @@ data class PortGroup(
         public override fun hashCode(): Int = this.name.hashCode()
     }
 
-    // function to let client flag this object as dirty
     public fun needsUpdate() {
         this._needsUpdate = true
     }
 
-    // wrapper to return self as savestate
-    // - returns memoized copy if needsUpdate false
-    // - otherwise, parses self
     public fun getSaveState(): PortGroupSaveState {
         if (this._needsUpdate) {
             this.saveState = PortGroupSaveState(this)

@@ -1,8 +1,9 @@
 main: phonon.nodes.NodesPlugin
 name: nodes
-version: 0.0.14
+version: 0.0.15
 api-version: 1.16
 softdepend: [kotlin, Essentials]
+
 commands:
   nodesadmin:
     description: Admin commands for Nodes
@@ -26,29 +27,24 @@ commands:
     usage: /nodes help or /nd help
   ally:
     description: Make alliance with another town/nation
-    aliases: []
     permission: nodes.command.ally
     usage: /ally help
   unally:
     description: Break alliance with another town/nation
-    aliases: []
     permission: nodes.command.unally
     usage: /unally help
   war:
     description: Declare war on another town/nation
-    aliases: []
     permission: nodes.command.war
     usage: /war help
   peace:
     description: Request peace with another town/nation
-    aliases: []
     permission: nodes.command.peace
     usage: /peace help
   truce:
     description: View truce list and times remaining
-    aliases: []
     permission: nodes.command.truce
-    usage: /peace help
+    usage: /truce help
   globalchat:
     description: Set player chat to global
     aliases: [gc]
@@ -71,38 +67,29 @@ commands:
     usage: /allychat or /ac
   player:
     description: View player info
-    aliases: [p]
     permission: nodes.command.player
-    usage: /player [name] or /p [name]
+    usage: /player [name]
   territory:
     description: View territory info
-    aliases: []
     permission: nodes.command.territory
     usage: /territory or /territory [id]
   port:
     description: Port warps
-    aliases: []
     permission: nodes.command.port
     usage: /port help
   warzone:
     description: Warzone commands
     aliases: [wz]
     usage: /warzone help
-    permission:
-      nodes.warzone.status:
-      description: View warzone status/scores
-      default: true
-    nodes.warzone.admin:
-      description: Create/enable/disable/remove warzones
-      default: op
   miningtower:
     description: Place and manage mining towers
-    aliases: [ mt ]
-    permission: nodes.admin
+    aliases: [mt]
+    permission: nodes.command.miningtower
     usage: /mt help
   refinery:
     description: Manage and use refineries
-    aliases: [ rf, refineries ]
+    aliases: [rf, refineries]
+    permission: nodes.command.refinery
     usage: /refinery help
   stats:
     description: View kill/death stats
@@ -112,16 +99,131 @@ commands:
     description: KDR leaderboards
     aliases: [lb]
     usage: /leaderboard <kills|deaths|kdr|towns|nations>
-    permission:
-      nodes.stats.self:
-        description: View own stats
-        default: true
-        nodes.stats.other:
-          description: View other players stats
-          default: true
-        nodes.stats.admin:
-          description: Reset stats
-          default: op
+  plot:
+    description: Town plots
+    aliases: [p]
+    usage: /plot help
+    permission: nodes.command.plot
+    permission-message: You do not have permission to use plot commands.
+  killshop:
+    description: Kill event shop
+    usage: /killshop
+    permission: nodes.command.killshop
+    permission-message: You do not have permission to use killshop.
+  vassal:
+    description: Vassals and overlords
+    aliases: [vassals]
+    permission: nodes.command.vassal
+    usage: /vassal help
+  supplydrop:
+    description: Supply drops
+    aliases: [sd]
+    permission: nodes.command.supplydrop
+    usage: /supplydrop help
+  raid:
+    description: Territory raids
+    usage: /raid <town> <territoryId> | status | cancel
+    permission: nodes.command.raid
+# ALL permission nodes live here — NOT under commands
 permissions:
+  nodes.admin:
+    description: Nodes admin
+    default: op
+  nodes.command.town:
+    default: true
+  nodes.command.nation:
+    default: true
+  nodes.command.nodes:
+    default: true
+  nodes.command.ally:
+    default: true
+  nodes.command.unally:
+    default: true
+  nodes.command.war:
+    default: true
+  nodes.command.peace:
+    default: true
+  nodes.command.truce:
+    default: true
+  nodes.command.chat.global:
+    default: true
+  nodes.command.chat.town:
+    default: true
+  nodes.command.chat.nation:
+    default: true
+  nodes.command.chat.ally:
+    default: true
+  nodes.command.player:
+    default: true
+  nodes.command.territory:
+    default: true
+  nodes.command.port:
+    default: true
   nodes.command.town.fly:
+    default: op
+  nodes.warzone.status:
+    description: View warzone status/scores
+    default: true
+  nodes.warzone.admin:
+    description: Create/enable/disable/remove warzones
+    default: op
+  nodes.stats.self:
+    description: View own stats
+    default: true
+  nodes.stats.other:
+    description: View other players stats
+    default: true
+  nodes.stats.admin:
+    description: Reset stats
+    default: op
+  nodes.command.plot:
+    description: Use /plot base commands
+    default: true
+  nodes.command.plot.create:
+    description: Create plots
+    default: true
+  nodes.command.plot.delete:
+    description: Delete plots
+    default: true
+  nodes.command.plot.owner:
+    description: Transfer plot ownership
+    default: true
+  nodes.command.plot.permissions:
+    description: Edit plot permission rules
+    default: true
+  nodes.admin.plot:
+    description: Admin plot commands via /nda plot
+    default: op
+  nodes.command.killshop:
+    description: Open killshop / view points
+    default: true
+  nodes.killshop.admin:
+    description: Manage killshop
+    default: op
+  nodes.command.raid:
+    description: Start/status/cancel raids
+    default: true
+  nodes.command.miningtower:
+    description: Use /mt help and /mt list
+    default: true
+  nodes.miningtower.admin:
+    description: Create and remove mining towers
+    default: op
+  nodes.command.refinery:
+    description: Use /refinery help, list and info
+    default: true
+  nodes.refinery.admin:
+    description: Create, edit, remove and break refineries
+    default: op
+  nodes.command.supplydrop:
+    description: Use /supplydrop help and status
+    default: true
+  nodes.supplydrop.admin:
+    description: Manage supply drop points, loot and drops
+    default: op
+  nodes.command.vassal:
+    description: Use /vassal
+    default: true
+  nodes.vassal.admin:
+    description: Release any vassal
     default: op

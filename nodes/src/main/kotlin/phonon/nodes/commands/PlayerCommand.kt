@@ -14,15 +14,14 @@ import phonon.nodes.Nodes
 import phonon.nodes.utils.string.filterResident
 
 /**
- * @command /truce
- * Print list of player's town's truces and list of times
+ * @command /player [name]
+ * Print a player's info (yours if no name given)
  */
 public class PlayerCommand :
     CommandExecutor,
     TabCompleter {
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
-        // no args, use sender's town
         if (args.size == 0) {
             if (sender is Player) {
                 val resident = Nodes.getResident(sender)
@@ -32,9 +31,7 @@ public class PlayerCommand :
             } else {
                 Message.error(sender, "Usage: \"/player name\" to print player info")
             }
-        }
-        // parse player name
-        else if (args.size >= 1) {
+        } else if (args.size >= 1) {
             val resident = Nodes.getResidentFromName(args[0])
             if (resident != null) {
                 resident.printInfo(sender)

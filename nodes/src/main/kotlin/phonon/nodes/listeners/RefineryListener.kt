@@ -30,13 +30,12 @@ class RefineryListener : Listener {
         val block = event.block
         val r = Refineries.getByBlock(block) ?: return
 
-        if (!event.player.hasPermission("nodes.admin") && !event.player.isOp) {
+        if (!event.player.hasPermission("nodes.refinery.admin")) {
             event.isCancelled = true
             Message.error(event.player, "You cannot break this refinery")
             return
         }
 
-        // Admin: remove data + allow break (or cancel and set AIR yourself)
         event.isCancelled = true
         Refineries.remove(r.id)
         Message.print(event.player, "Removed refinery ${r.id}")

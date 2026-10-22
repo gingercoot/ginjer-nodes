@@ -18,7 +18,6 @@ import phonon.nodes.chat.ChatMode
 import phonon.nodes.objects.Resident
 import phonon.nodes.utils.string.filterByStart
 
-// toggle chat mode then print message
 private fun toggleChatMode(player: Player, resident: Resident, chatMode: ChatMode) {
     val newChatMode = Nodes.toggleChatMode(resident, chatMode)
 
@@ -30,7 +29,6 @@ private fun toggleChatMode(player: Player, resident: Resident, chatMode: ChatMod
     }
 }
 
-// list of /gc subcommands, used for onTabComplete
 private val globalChatSubcommands: List<String> = listOf(
     "join",
     "unmute",
@@ -63,11 +61,9 @@ public class GlobalChatCommand :
             return true
         }
 
-        // no args, toggle chat mode
         if (args.size == 0) {
             toggleChatMode(player, resident, ChatMode.GLOBAL)
         } else {
-            // parse subcommand
             when (args[0].lowercase()) {
                 "join" -> enableChannel(sender)
                 "unmute" -> enableChannel(sender)
@@ -120,11 +116,9 @@ public class TownChatCommand :
             return true
         }
 
-        // no args, toggle chat mode
         if (args.size == 0) {
             toggleChatMode(player, resident, ChatMode.TOWN)
         } else {
-            // parse subcommand
             when (args[0].lowercase()) {
                 "leave" -> leaveChannel(sender)
                 else -> {
@@ -139,7 +133,6 @@ public class TownChatCommand :
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<String>): List<String> = listOf()
 
     private fun leaveChannel(player: Player) {
-        // TODO
     }
 }
 
@@ -162,11 +155,9 @@ public class NationChatCommand :
             return true
         }
 
-        // no args, toggle chat mode
         if (args.size == 0) {
             toggleChatMode(player, resident, ChatMode.NATION)
         } else {
-            // parse subcommand
             when (args[0].lowercase()) {
                 "leave" -> leaveChannel(sender)
                 else -> {
@@ -181,7 +172,6 @@ public class NationChatCommand :
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<String>): List<String> = listOf()
 
     private fun leaveChannel(player: Player) {
-        // TODO
     }
 }
 
@@ -204,11 +194,9 @@ public class AllyChatCommand :
             return true
         }
 
-        // no args, toggle chat mode
         if (args.size == 0) {
             toggleChatMode(player, resident, ChatMode.ALLY)
         } else {
-            // parse subcommand
             when (args[0].lowercase()) {
                 "leave" -> leaveChannel(sender)
                 else -> {
@@ -223,6 +211,5 @@ public class AllyChatCommand :
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<String>): List<String> = listOf()
 
     private fun leaveChannel(player: Player) {
-        // TODO
     }
 }

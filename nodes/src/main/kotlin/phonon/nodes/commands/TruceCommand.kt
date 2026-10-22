@@ -26,7 +26,6 @@ public class TruceCommand :
     TabCompleter {
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
-        // no args, use sender's town
         if (args.size == 0) {
             if (!(sender is Player)) {
                 return true
@@ -45,9 +44,7 @@ public class TruceCommand :
             }
 
             printTownTruces(player, town)
-        }
-        // parse town name
-        else if (args.size >= 1) {
+        } else if (args.size >= 1) {
             val townName = args[0]
             val town = Nodes.getTownFromName(townName)
             if (town !== null) {
@@ -72,13 +69,11 @@ public class TruceCommand :
         return listOf()
     }
 
-    // print truce list to sender
     private fun printTownTruces(sender: CommandSender, town: Town) {
         val time = System.currentTimeMillis()
 
         Message.print(sender, "Truces with ${town.name}:")
 
-        // get truce list
         val truceList = Truce.get(town)
         for (townPair in truceList) {
             val startTime = Truce.truces.get(townPair)

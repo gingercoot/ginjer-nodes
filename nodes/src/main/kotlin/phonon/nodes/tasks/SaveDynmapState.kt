@@ -10,9 +10,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 
-/**
- * Task for copying world.json or towns.json to dynmap folder.
- */
 public class TaskCopyToDynmap(
     val pathTownsJson: Path,
     val pathDynmapDir: Path,

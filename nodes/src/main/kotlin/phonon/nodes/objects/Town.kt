@@ -13,6 +13,7 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
 import org.bukkit.scheduler.BukkitTask
+import phonon.nodes.Config
 import phonon.nodes.Message
 import phonon.nodes.constants.PermissionsGroup
 import phonon.nodes.constants.TownPermissions
@@ -22,20 +23,17 @@ import phonon.nodes.utils.EnumArrayMap
 import phonon.nodes.utils.createEnumArrayMap
 import phonon.nodes.utils.string.stringArrayFromSet
 import phonon.nodes.utils.string.stringMapFromMap
+import phonon.nodes.vassal.Vassals
 import java.util.EnumSet
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
 
-/**
- * Wrapper type for town uuid.
- */
 @JvmInline
 value class TownId(private val id: UUID) {
     override fun toString(): String = id.toString()
     fun toUUID(): UUID = id
 }
 
-// internal town id counter
 private var townNametagIdCounter: Int = 0
 
 public class Town(
@@ -49,82 +47,59 @@ public class Town(
     // used by nametag scoreboard system (cannot use name because 16 char team limit)
     val townNametagId: Int
 
-    // residents belong to town
     val residents: HashSet<Resident> = hashSetOf()
 
-    // officer rank players (assistants to leader)
     val officers: HashSet<Resident> = hashSetOf()
 
-    // territories owned by town
-    // this includes annexed territories
+    // Includes annexed territories
     val territories: HashSet<TerritoryId> = hashSetOf(home)
 
-    // separate set of all annexed territories
-    // config: for these to count towards total claims
+    // Annexed territories (config decides if they count towards claims)
     val annexed: HashSet<TerritoryId> = hashSetOf()
 
     // territories captured by town (but not annexed)
     val captured: HashSet<TerritoryId> = hashSetOf()
 
-    // outposts in town, players can /t spawn [output]
-    // map name -> town outpost
     val outposts: HashMap<String, TownOutpost> = hashMapOf()
 
-    // nation for town
     var nation: Nation? = null
 
-    // town's diplomatic relations: allies, enemies, truce
-    // these determine who town can attack during war
     val allies: HashSet<Town> = hashSetOf()
     val enemies: HashSet<Town> = hashSetOf()
 
-    // players currently online in town
-    // must be Set to satisfy bukkit interface in Chat.kt
+    // Must be a Set to satisfy the Bukkit interface used in Chat.kt
     val playersOnline: MutableSet<Player> = mutableSetOf()
 
-    // territory claims power
-    var claimsUsed: Int = 0 // territory claim power used
+    var claimsUsed: Int = 0
     var claimsMax: Int = 0 // calculated total claim power
     var claimsBonus: Int = 0 // manual adjust add/subtract claim power
     var claimsPenalty: Int = 0 // subtracted from max power, decay over time
     var claimsPenaltyTime: Long = 0 // time progress until penalty reduced
     var claimsAnnexed: Int = 0 // claims penalty from territories that were annexed
 
-    // flag that town is over max claims
     var isOverClaimsMax: Boolean = false
 
-    // income storage container from territory income
-    // map material -> current amount of it
     val income: IncomeInventory = IncomeInventory()
 
-    // permission flags, map of
-    // town permissions category -> set of allowed groups in (town, ally, nation, outsider)
-    // TODO: replace with EnumArrayMap custom data structure
     val permissions: EnumArrayMap<TownPermissions, EnumSet<PermissionsGroup>>
 
-    // protected chest blocks in town (for leader, officers, + trusted players)
+    // Chests locked to leader, officers and trusted residents
     val protectedBlocks: HashSet<Block> = hashSetOf()
 
-    // color for displaying on map
     var color: Color
 
-    // re-usable nametag strings, for each diplomatic relation type
     var nametagTown: String // nametag seen by players in town
     var nametagNation: String // nametag seen by players in same nation
     var nametagNeutral: String // nametag seen by players neutral to this town
     var nametagAlly: String // nametag seen by allies of this town
     var nametagEnemy: String // nametag seen by enemies of this town
 
-    // flag that anyone can join town
     var isOpen: Boolean = false
 
-    // players applying to town and their bukkittasks
     val applications: HashMap<Resident, BukkitTask> = hashMapOf()
 
-    // cooldown timer for moving town home territory
     var moveHomeCooldown: Long = 0L
 
-    // json string and memoization flag
     private var saveState: TownSaveState
 
     @Suppress("PropertyName")
@@ -134,20 +109,16 @@ public class Town(
         this.townNametagId = townNametagIdCounter
         townNametagIdCounter += 1
 
-        // create permissions object
         this.permissions = createEnumArrayMap<TownPermissions, EnumSet<PermissionsGroup>>({ _ -> EnumSet.of(PermissionsGroup.TOWN) })
 
         if (leader != null) {
-            // add creator to residents list
             this.residents.add(leader!!)
 
-            // add creator as online
             if (this.leader!!.player()?.isOnline == true) {
                 this.playersOnline.add(leader!!.player()!!)
             }
         }
 
-        // assign town random color
         val random = ThreadLocalRandom.current()
         this.color = Color(
             random.nextInt(256),
@@ -155,21 +126,17 @@ public class Town(
             random.nextInt(256),
         )
 
-        // generate nametags from name
         this.nametagTown = "${ChatColor.GREEN}[${this.name}] "
         this.nametagNation = "${ChatColor.DARK_GREEN}[${this.name}] "
         this.nametagNeutral = "${ChatColor.GOLD}[${this.name}] "
         this.nametagAlly = "${ChatColor.DARK_AQUA}[${this.name}] "
         this.nametagEnemy = "${ChatColor.RED}[${this.name}] "
 
-        // generate initial json string
         this.saveState = TownSaveState(this)
     }
 
     public override fun hashCode(): Int = this.uuid.hashCode()
 
-    // update town nametag display strings from name
-    // (different color for each diplomacy group)
     public fun updateNametags() {
         this.nametagTown = "${ChatColor.GREEN}[${this.name}] "
         this.nametagNation = "${ChatColor.DARK_GREEN}[${this.name}] "
@@ -178,7 +145,6 @@ public class Town(
         this.nametagEnemy = "${ChatColor.RED}[${this.name}] "
     }
 
-    // prints out nation object info
     public fun printInfo(sender: CommandSender) {
         val nation = this.nation?.name ?: "${ChatColor.GRAY}None"
         val leader = this.leader?.name ?: "${ChatColor.GRAY}None"
@@ -203,13 +169,11 @@ public class Town(
             "${ChatColor.GRAY}None"
         }
 
-        // make max claims red if town has penalty
         val claimsMaxColor = if (claimsPenalty > 0) {
             "${ChatColor.RED}"
         } else {
             ""
         }
-        // used claims dark red if over max
         val claimsUsedColor = if (isOverClaimsMax) {
             "${ChatColor.DARK_RED}"
         } else {
@@ -221,6 +185,13 @@ public class Town(
         Message.print(sender, "- Territories${ChatColor.WHITE}: ${this.territories.size}")
         Message.print(sender, "- Claim Power${ChatColor.WHITE}: ${claimsUsedColor}${this.claimsUsed}/${claimsMaxColor}${this.claimsMax}")
         Message.print(sender, "- Nation${ChatColor.WHITE}: $nation")
+        Vassals.overlordOf(this)?.let { overlord ->
+            Message.print(sender, "- Vassal of${ChatColor.WHITE}: ${overlord.name} (pays ${Vassals.percent(Config.vassalTributeRate)} tribute)")
+        }
+        val vassals = Vassals.vassalsOf(this)
+        if (vassals.isNotEmpty()) {
+            Message.print(sender, "- Vassals${ChatColor.WHITE}: ${vassals.joinToString(", ") { it.name }}")
+        }
         Message.print(sender, "- Allies${ChatColor.WHITE}: $allies")
         Message.print(sender, "- Enemies${ChatColor.WHITE}: $enemies")
         Message.print(sender, "- Leader${ChatColor.WHITE}: $leader")
@@ -316,14 +287,11 @@ public class Town(
         }
     }
 
-    // function to let client flag this object as dirty
     public fun needsUpdate() {
         this._needsUpdate = true
     }
 
-    // wrapper to return self as savestate
-    // - returns memoized copy if needsUpdate false
-    // - otherwise, parses self
+    // Returns the memoized snapshot unless needsUpdate() was called
     public fun getSaveState(): TownSaveState {
         if (this._needsUpdate) {
             this.saveState = TownSaveState(this)
@@ -333,7 +301,6 @@ public class Town(
     }
 }
 
-// string format for town permissions
 private fun permissionsToJsonString(permissions: EnumArrayMap<TownPermissions, EnumSet<PermissionsGroup>>): String {
     val str = StringBuilder()
 
@@ -356,7 +323,6 @@ private fun permissionsToJsonString(permissions: EnumArrayMap<TownPermissions, E
     return s
 }
 
-// string format for protected blocks HashSet<Block>
 private fun blocksToJsonString(blocks: HashSet<Block>): String {
     val str = StringBuilder()
     str.append("[")
@@ -376,7 +342,6 @@ private fun blocksToJsonString(blocks: HashSet<Block>): String {
     return s
 }
 
-// string format for town outposts HashMap<String, TownOutpost>
 private fun townOutpostsToJsonString(outposts: HashMap<String, TownOutpost>): String {
     val str = StringBuilder()
     str.append("{")

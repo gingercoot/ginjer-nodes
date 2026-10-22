@@ -10,9 +10,6 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.Future
 
-/**
- * Synchronously save string to file from given path.
- */
 public fun saveStringToFile(str: String, path: Path) {
     val buffer = ByteBuffer.wrap(str.toByteArray())
     val fileChannel: AsynchronousFileChannel = AsynchronousFileChannel.open(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
@@ -20,9 +17,6 @@ public fun saveStringToFile(str: String, path: Path) {
     operation.get()
 }
 
-/**
- * Load long number from file
- */
 public fun loadLongFromFile(path: Path): Long? {
     if (Files.exists(path)) {
         try {
@@ -41,10 +35,6 @@ public fun loadLongFromFile(path: Path): Long? {
     return null
 }
 
-/**
- * Runnable task for writing string to a file, with optional callback
- * to run after writing is complete.
- */
 public class FileWriteTask(
     str: String,
     val path: Path,

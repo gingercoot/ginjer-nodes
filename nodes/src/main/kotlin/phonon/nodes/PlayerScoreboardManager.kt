@@ -20,15 +20,10 @@ import java.util.UUID
 
 object PlayerScoreboardManager {
 
-    // bukkit scoreboard manager
     val scoreboardManager = Bukkit.getScoreboardManager()
 
-    // map player -> scoreboard
     val playerScoreboards: LinkedHashMap<UUID, Scoreboard> = LinkedHashMap()
 
-    /**
-     * Get scoreboard from player, creates new one if does not exist
-     */
     public fun getScoreboard(uuid: UUID): Scoreboard {
         val scoreboard = PlayerScoreboardManager.playerScoreboards.get(uuid)
         if (scoreboard === null) {

@@ -1,4 +1,4 @@
-version = "0.0.14"
+version = "0.0.15"
 
 val outputJarName = "nodes"
 
@@ -16,7 +16,7 @@ repositories {
 
 dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib")
-
+    compileOnly(files("libs/xc.jar"))
     compileOnly("com.google.code.gson:gson:2.13.2")
 
     paperweight.paperDevBundle("1.21.10-R0.1-SNAPSHOT")

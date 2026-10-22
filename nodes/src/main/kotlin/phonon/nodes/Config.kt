@@ -11,6 +11,8 @@ import org.bukkit.Material
 import org.bukkit.configuration.ConfigurationSection
 import org.bukkit.configuration.file.FileConfiguration
 import org.bukkit.entity.EntityType
+import phonon.nodes.fortify.FortLevel
+import phonon.nodes.fortify.Fortifications
 import phonon.nodes.objects.OreDeposit
 import phonon.nodes.objects.TerritoryResources
 import java.nio.file.Paths
@@ -26,10 +28,8 @@ public object Config {
     // main plugin path for config and saves
     public var pathPlugin = "plugins/nodes"
 
-    // folder for backups of json state files
     public var pathBackup = Paths.get("plugins/nodes/backup").normalize()
 
-    // file names for world, towns, war json files
     public var pathWorld = Paths.get(pathPlugin, "world.json").normalize()
     public var pathTowns = Paths.get(pathPlugin, "towns.json").normalize()
     public var pathWar = Paths.get(pathPlugin, "war.json").normalize()
@@ -41,25 +41,18 @@ public object Config {
     // disable world when nodes world.json or towns.json fails due to errors
     public var disableWorldWhenLoadFails = true
 
-    // period for running world save
     public var savePeriod: Long = 600L
 
-    // all long tick cycle values
-    // 1 hour = 3600000 ms
-    // 2 hour = 7200000 ms
     public var backupPeriod: Long = 3600000L // 1 hour
 
     // main tick period check for backup, income, town + resident cooldown counters
     public var mainPeriodicTick: Long = 1200L
 
-    // period to send reminder to players that town over max claims
     public var overMaxClaimsReminderPeriod: Long = 24000L
 
-    // nametag update period
     public var nametagUpdatePeriod: Long = 80L
     public var nametagPipelineTicks: Int = 16
 
-    // force copy to dynmap folder
     public var dynmapCopyTowns: Boolean = false
 
     // ===================================
@@ -88,30 +81,15 @@ public object Config {
     // global resource node in all territories
     public var globalResources = TerritoryResources()
 
-    // hidden ore blocks, stone only
     public var oreBlocks = EnumSet.of(
-        Material.STONE, // note: granite, diorite, and andesite are variants of stone in 1.12.2
+        Material.STONE,
         Material.ANDESITE,
         Material.GRANITE,
         Material.DIORITE,
     )
 
-    // harvestable crop types affected by occupied territory tax
+    // Crops affected by occupied territory tax
 
-    // version 1.12
-    // public var cropTypes = EnumSet.of(
-    //     Material.CROPS, // wheat
-    //     Material.POTATO,
-    //     Material.CARROT,
-    //     Material.BEETROOT_BLOCK,
-    //     Material.PUMPKIN,
-    //     Material.MELON_BLOCK,
-    //     Material.SUGAR_CANE_BLOCK,
-    //     Material.COCOA,
-    //     Material.CACTUS
-    // )
-
-    // version 1.16
     public var cropTypes = EnumSet.of(
         Material.BEETROOTS,
         Material.CACTUS,
@@ -143,10 +121,8 @@ public object Config {
     public var allowCropsInWilderness: Boolean = false
     public var allowBreedingInWilderness: Boolean = false
 
-    // allow getting ore in captured territory
     public var allowOreInCaptured: Boolean = true
 
-    // allow mining in other towns in nation
     public var allowOreInNationTowns: Boolean = true
 
     // required sky light for crops and animal breeding (set = 0 to disable)
@@ -177,7 +153,6 @@ public object Config {
     // interact in territory without town (build, destroy, etc...)
     public var canInteractInUnclaimed: Boolean = true
 
-    // only allow shearing in sheep node
     public var requireSheepNodeToShear: Boolean = true
 
     // ===================================
@@ -197,23 +172,20 @@ public object Config {
     public var territoryCostBase: Int = 10
     public var territoryCostScale: Double = 0.25
 
-    // initial player given on town creation
+    // Claims given on town creation
     public var townInitialClaims: Int = 25
 
     // penalty scale factor when over initial claim allowed:
     // penalty = scale * (territory.cost - initialAllowed) if cost > allowed
     public var initialOverClaimsAmountScale: Int = 2
 
-    // base number of claim power per town
     public var townClaimsBase: Int = 20
 
     // max claim power per town (-1 for unlimited)
     public var townClaimsMax: Int = -1
 
-    // town penalty decay amount
     public var townPenaltyDecay: Int = 2
 
-    // claim power per player
     public var playerClaimsInitial: Int = 0 // initial player claims on town join
     public var playerClaimsMax: Int = 20 // max player claims for town
     public var playerClaimsIncrease: Int = 1 // claims increase per tick period
@@ -233,7 +205,6 @@ public object Config {
     // reduced resource rate when over max claim (runs Math.random() < rate)
     public var overClaimsMaxPenalty: Double = 0.5
 
-    // allow claiming territories even if town already over max claims
     public var overClaimsAllowClaim: Boolean = false
 
     // annexation settings
@@ -246,10 +217,8 @@ public object Config {
     // town spawn timer in seconds (converted to ticks by num * 20)
     public var townSpawnTime: Int = 10
 
-    // outpost configs
     public val outpostTeleportCost: EnumMap<Material, Int> = EnumMap<Material, Int>(Material::class.java)
 
-    // inline string list of outpost teleport cost
     public var outpostTeleportCostString: String = ""
 
     // ===================================
@@ -258,20 +227,19 @@ public object Config {
     // allow spawning in nation towns
     public var allowNationTownSpawn: Boolean = false
 
-    // cost for nation town spawn
     public val nationTownTeleportCost: EnumMap<Material, Int> = EnumMap<Material, Int>(Material::class.java)
 
-    // inline string list of outpost teleport cost
     public var nationTownTeleportCostString: String = ""
 
-    // allow members of the same nation to attack eachother
+    public var allowTownFriendlyFire: Boolean = false
+
     public var allowNationFriendlyFire: Boolean = false
 
     // ===================================
     // alliance settings
     // ===================================
-    // allow allied nations to attack eachother
-    public var allowAllyFriendlyFire: Boolean = true
+    // allow allied nations to attack each other
+    public var allowAllyFriendlyFire: Boolean = false
 
     // ===================================
     // captured territory tax rates:
@@ -319,17 +287,13 @@ public object Config {
     // ticks required to capture chunk
     public var chunkAttackTime: Long = 200
 
-    // multiplier for chunk attacks
     public var chunkAttackFromWastelandMultiplier: Double = 2.0 // territory next to wilderness
     public var chunkAttackHomeMultiplier: Double = 2.0 // in home territory
 
-    // number of chunks a player can attack at same time
     public var maxPlayerChunkAttacks: Int = 1
 
-    // allow breaking allies war flags
     public var allowBreakingAlliesFlags = false
 
-    // flag sky beacon config
     public var flagBeaconSize: Int = 6 // be in range [2, 16]
     public var flagBeaconMinSkyLevel: Int = 100 // minimum height level in sky
     public var flagBeaconSkyLevel: Int = 50 // height level above blocks
@@ -401,15 +365,12 @@ public object Config {
     // bypass permissions and allow extended ally interactions in towns
     public var warPermissions: Boolean = true
 
-    // allow leaving towns/natiosn during war
     public var canLeaveTownDuringWar: Boolean = true
 
-    // allow creating towns, nation stuff during war
     public var canCreateTownDuringWar: Boolean = false
     public var canDestroyTownDuringWar: Boolean = false
     public var canLeaveNationDuringWar: Boolean = false
 
-    // global disable annexing
     public var annexDisabled: Boolean = false
 
     // use whitelist/blacklist for war (derived from list.size > 0 for lists below)
@@ -426,13 +387,10 @@ public object Config {
     public var annexBlacklist: HashSet<UUID> = hashSetOf()
     public var useAnnexBlacklist: Boolean = false
 
-    // whitelist settings
-
     // only towns in whitelist can annex territories (from other whitelist territories)
     public var onlyWhitelistCanAnnex: Boolean = true
     public var onlyWhitelistCanClaim: Boolean = true
 
-    // multiplier for warping home when occupied
     public var occupiedHomeTeleportMultiplier: Double = 12.0
 
     // List of town UUIDs to allow building in occupied territory.
@@ -441,6 +399,46 @@ public object Config {
     // towns during non-war time. This list allows building/interacting
     // in these occupied towns.
     public var allowControlInOccupiedTownList: HashSet<UUID> = hashSetOf()
+
+    // Raid
+    public var raidEnabled: Boolean = true
+    public var raidPrepMs: Long = 15L * 60L * 1000L
+    public var raidLiveMs: Long = 30L * 60L * 1000L
+    public var raidCancelDefenderWinWindowMs: Long = 5L * 60L * 1000L
+    public var raidCooldownMs: Long = 2L * 60L * 60L * 1000L
+    public var raidAttackerReward: Map<org.bukkit.Material, Int> = emptyMap()
+    public var raidDefenderReward: Map<org.bukkit.Material, Int> = emptyMap()
+    public var raidMinDefenderOnline: Int = 1
+
+    // Supply lines
+    public var supplyLinesEnabled: Boolean = true
+    public var supplyLinesCutIncomeMultiplier: Double = 0.25
+    public var supplyLinesCutCaptureTimeMultiplier: Double = 0.5
+    public var supplyLinesChunkBlockFraction: Double = 0.5
+    public var supplyLinesWastelandRoutes: Boolean = true
+
+    // Vassals
+    public var vassalsEnabled: Boolean = true
+    public var vassalTributeRate: Double = 0.2
+    public var vassalRevoltCooldownMs: Long = 72L * 60L * 60L * 1000L
+    public var vassalOfferTimeoutMs: Long = 120L * 1000L
+
+    // Fortified nodes
+    public var fortifyEnabled: Boolean = true
+    public var fortifyLevels: List<FortLevel> = Fortifications.defaultLevels
+
+    // Supply drops
+    public var supplyDropsEnabled: Boolean = true
+    public var supplyDropsIntervalMs: Long = 180L * 60L * 1000L
+    public var supplyDropsJitterMs: Long = 30L * 60L * 1000L
+    public var supplyDropsWarningMs: Long = 5L * 60L * 1000L
+    public var supplyDropsDespawnMs: Long = 20L * 60L * 1000L
+    public var supplyDropsChannelMs: Long = 60L * 1000L
+    public var supplyDropsChannelRadius: Double = 4.0
+    public var supplyDropsFallHeight: Double = 60.0
+    public var supplyDropsItemsPerDrop: Int = 3
+    public var supplyDropsMinPlayersOnline: Int = 5
+    public var supplyDropsDiscord: Boolean = true
 
     // ===================================
     // truce configs
@@ -467,12 +465,15 @@ public object Config {
     public var discordWebhookWar: String = ""
     public var discordRelayFlagWar: Boolean = true
     public var discordRelayWar: Boolean = true
+    public var discordWebhookRaids: String = ""
+    public var discordWebhookWarzones: String = ""
+    public var discordRelayRaids: Boolean = true
+    public var discordRelayWarzones: Boolean = true
 
     // ===================================================
     // Load config
     // ===================================================
     public fun load(config: FileConfiguration) {
-        // engine settings
         Config.disableWorldWhenLoadFails = config.getBoolean("disableWorldWhenLoadFails", Config.disableWorldWhenLoadFails)
         Config.savePeriod = config.getLong("savePeriod", Config.savePeriod)
         Config.backupPeriod = config.getLong("backupPeriod", Config.backupPeriod)
@@ -482,22 +483,17 @@ public object Config {
         Config.nametagPipelineTicks = config.getInt("nametagPipelineTicks", Config.nametagPipelineTicks)
         Config.dynmapCopyTowns = config.getBoolean("dynmapCopyTowns", Config.dynmapCopyTowns)
 
-        // use internal nametag system
         Config.useNametags = config.getBoolean("useNametags", Config.useNametags)
 
-        // afk kick time
         Config.afkKickTime = config.getLong("afkKickTime", Config.afkKickTime)
 
-        // generic permissions
         Config.canInteractInEmpty = config.getBoolean("canInteractInEmpty", Config.canInteractInEmpty)
         Config.canInteractInUnclaimed = config.getBoolean("canInteractInUnclaimed", Config.canInteractInUnclaimed)
         Config.requireSheepNodeToShear = config.getBoolean("requireSheepNodeToShear", Config.requireSheepNodeToShear)
 
-        // town cooldown configs
         Config.townCreateCooldown = config.getLong("townCreateCooldown", Config.townCreateCooldown)
         Config.townMoveHomeCooldown = config.getLong("townMoveHomeCooldown", Config.townMoveHomeCooldown)
 
-        // resource configs
         Config.incomeEnabled = config.getBoolean("incomeEnabled", Config.incomeEnabled)
         Config.incomePeriod = config.getLong("incomePeriod", Config.incomePeriod)
         Config.incomeScaleByClaimPower = config.getBoolean("incomeScaleByClaimPower", Config.incomeScaleByClaimPower)
@@ -515,13 +511,11 @@ public object Config {
         Config.breedingMinYHeight = config.getInt("breedingMinYHeight", Config.breedingMinYHeight)
         Config.breedingMaxYHeight = config.getInt("breedingMaxYHeight", Config.breedingMaxYHeight)
 
-        // global resources in all territories
         val globalResourcesSection = config.getConfigurationSection("globalResources")
         if (globalResourcesSection !== null) {
             Config.globalResources = parseGlobalResources(globalResourcesSection)
         }
 
-        // town claims
         Config.territoryCostBase = config.getInt("territoryCostBase", Config.territoryCostBase)
         Config.territoryCostScale = config.getDouble("territoryCostScale", Config.territoryCostScale)
         Config.townInitialClaims = config.getInt("townInitialClaims", Config.townInitialClaims)
@@ -542,7 +536,6 @@ public object Config {
 
         Config.canOnlyAnnexDuringWar = config.getBoolean("canOnlyAnnexDuringWar", Config.canOnlyAnnexDuringWar)
 
-        // town settings
         Config.townSpawnTime = config.getInt("townSpawnTime", Config.townSpawnTime)
         val outpostTeleportCostSection = config.getConfigurationSection("outpostTeleportCost")
         if (outpostTeleportCostSection !== null) {
@@ -550,7 +543,6 @@ public object Config {
             Config.outpostTeleportCostString = teleportCostToString(Config.outpostTeleportCost)
         }
 
-        // nation settings
         Config.allowNationTownSpawn = config.getBoolean("allowNationTownSpawn", Config.allowNationTownSpawn)
         val nationTeleportCostSection = config.getConfigurationSection("nationTownTeleportCost")
         if (nationTeleportCostSection !== null) {
@@ -559,10 +551,8 @@ public object Config {
         }
         Config.allowNationFriendlyFire = config.getBoolean("allowNationFriendlyFire", Config.allowNationFriendlyFire)
 
-        // ally settings
         Config.allowAllyFriendlyFire = config.getBoolean("allowAllyFriendlyFire", Config.allowAllyFriendlyFire)
 
-        // tax
         Config.taxIncomeRate = config.getDouble("taxIncomeRate", Config.taxIncomeRate)
         Config.taxMineRate = config.getDouble("taxMineRate", Config.taxMineRate)
         Config.taxFarmRate = config.getDouble("taxFarmRate", Config.taxFarmRate)
@@ -591,7 +581,6 @@ public object Config {
         Config.warBossBarMaxDistanceChunks = config.getInt("warBossBarMaxDistanceChunks", Config.warBossBarMaxDistanceChunks)
         Config.onlyAllowExplosionsDuringWar = config.getBoolean("onlyAllowExplosionsDuringWar", Config.onlyAllowExplosionsDuringWar)
         Config.warPermissions = config.getBoolean("warPermissions", Config.warPermissions)
-        // Fork: war performance
         Config.flagBeaconEnabled = config.getBoolean("flagBeaconEnabled", Config.flagBeaconEnabled)
         Config.flagBeaconUpdateLighting = config.getBoolean("flagBeaconUpdateLighting", Config.flagBeaconUpdateLighting)
         Config.flagHologramsEnabled = config.getBoolean("flagHologramsEnabled", Config.flagHologramsEnabled)
@@ -624,10 +613,96 @@ public object Config {
         Config.warPlayerWhiteListTowns = parseUUIDSet(config, "warPlayerWhiteListTowns")
         Config.whitelistDenyCommand = config.getString("whitelistDenyCommand", Config.whitelistDenyCommand)
             ?: Config.whitelistDenyCommand
+        // ======================
+        // Raid
+        // ======================
+        val raidSec = config.getConfigurationSection("raid")
+        if (raidSec != null) {
+            Config.raidEnabled = raidSec.getBoolean("enabled", Config.raidEnabled)
+            Config.raidPrepMs = raidSec.getLong("prepMinutes", 15L) * 60L * 1000L
+            Config.raidLiveMs = raidSec.getLong("liveMinutes", 30L) * 60L * 1000L
+            Config.raidCancelDefenderWinWindowMs =
+                raidSec.getLong("cancelDefenderWinWindowMinutes", 5L) * 60L * 1000L
+            Config.raidCooldownMs = raidSec.getLong("cooldownMinutes", 120L) * 60L * 1000L
+            Config.raidMinDefenderOnline =
+                raidSec.getInt("minDefenderOnline", Config.raidMinDefenderOnline).coerceAtLeast(0)
+
+            fun loadReward(key: String): Map<org.bukkit.Material, Int> {
+                val sec = raidSec.getConfigurationSection(key) ?: return emptyMap()
+                val map = mutableMapOf<org.bukkit.Material, Int>()
+                for (k in sec.getKeys(false)) {
+                    val mat = org.bukkit.Material.matchMaterial(k) ?: continue
+                    map[mat] = sec.getInt(k)
+                }
+                return map
+            }
+            Config.raidAttackerReward = loadReward("attackerReward")
+            Config.raidDefenderReward = loadReward("defenderReward")
+        }
+
+        val supplyLinesSec = config.getConfigurationSection("supplyLines")
+        if (supplyLinesSec != null) {
+            Config.supplyLinesEnabled = supplyLinesSec.getBoolean("enabled", Config.supplyLinesEnabled)
+            Config.supplyLinesCutIncomeMultiplier =
+                supplyLinesSec.getDouble("cutIncomeMultiplier", Config.supplyLinesCutIncomeMultiplier).coerceIn(0.0, 1.0)
+            Config.supplyLinesCutCaptureTimeMultiplier =
+                supplyLinesSec.getDouble("cutCaptureTimeMultiplier", Config.supplyLinesCutCaptureTimeMultiplier).coerceIn(0.01, 1.0)
+            Config.supplyLinesChunkBlockFraction =
+                supplyLinesSec.getDouble("chunkBlockFraction", Config.supplyLinesChunkBlockFraction).coerceIn(0.0, 1.0)
+            Config.supplyLinesWastelandRoutes =
+                supplyLinesSec.getBoolean("wastelandRoutes", Config.supplyLinesWastelandRoutes)
+        }
+
+        val vassalSec = config.getConfigurationSection("vassals")
+        if (vassalSec != null) {
+            Config.vassalsEnabled = vassalSec.getBoolean("enabled", Config.vassalsEnabled)
+            Config.vassalTributeRate = vassalSec.getDouble("tributeRate", Config.vassalTributeRate).coerceIn(0.0, 1.0)
+            Config.vassalRevoltCooldownMs = vassalSec.getLong("revoltCooldownHours", 72L).coerceAtLeast(0L) * 60L * 60L * 1000L
+            Config.vassalOfferTimeoutMs = vassalSec.getLong("offerTimeoutSeconds", 120L).coerceAtLeast(10L) * 1000L
+        }
+
+        val fortifySec = config.getConfigurationSection("fortify")
+        if (fortifySec != null) {
+            Config.fortifyEnabled = fortifySec.getBoolean("enabled", Config.fortifyEnabled)
+            val levelsSec = fortifySec.getConfigurationSection("levels")
+            if (levelsSec != null) {
+                val parsed = levelsSec.getKeys(false)
+                    .mapNotNull { key -> key.toIntOrNull()?.let { it to levelsSec.getConfigurationSection(key) } }
+                    .sortedBy { it.first }
+                    .mapNotNull { (_, sec) ->
+                        sec?.let {
+                            FortLevel(
+                                it.getDouble("captureTimeMultiplier", 1.0).coerceAtLeast(1.0),
+                                it.getConfigurationSection("cost")?.let { c -> parseTeleportCost(c) } ?: emptyMap(),
+                                it.getConfigurationSection("upkeep")?.let { u -> parseTeleportCost(u) } ?: emptyMap(),
+                            )
+                        }
+                    }
+                if (parsed.isNotEmpty()) {
+                    Config.fortifyLevels = parsed
+                }
+            }
+        }
+
+        val supplyDropsSec = config.getConfigurationSection("supplyDrops")
+        if (supplyDropsSec != null) {
+            val minute = 60L * 1000L
+            Config.supplyDropsEnabled = supplyDropsSec.getBoolean("enabled", Config.supplyDropsEnabled)
+            Config.supplyDropsIntervalMs = supplyDropsSec.getLong("intervalMinutes", 180L).coerceAtLeast(1L) * minute
+            Config.supplyDropsJitterMs = supplyDropsSec.getLong("jitterMinutes", 30L).coerceAtLeast(0L) * minute
+            Config.supplyDropsWarningMs = supplyDropsSec.getLong("warningSeconds", 300L).coerceAtLeast(0L) * 1000L
+            Config.supplyDropsDespawnMs = supplyDropsSec.getLong("despawnMinutes", 20L).coerceAtLeast(1L) * minute
+            Config.supplyDropsChannelMs = supplyDropsSec.getLong("claimSeconds", 60L).coerceAtLeast(1L) * 1000L
+            Config.supplyDropsChannelRadius = supplyDropsSec.getDouble("claimRadius", Config.supplyDropsChannelRadius)
+            Config.supplyDropsFallHeight = supplyDropsSec.getDouble("fallHeight", Config.supplyDropsFallHeight).coerceAtLeast(0.0)
+            Config.supplyDropsItemsPerDrop = supplyDropsSec.getInt("itemsPerDrop", Config.supplyDropsItemsPerDrop).coerceAtLeast(1)
+            Config.supplyDropsMinPlayersOnline =
+                supplyDropsSec.getInt("minPlayersOnline", Config.supplyDropsMinPlayersOnline).coerceAtLeast(0)
+            Config.supplyDropsDiscord = supplyDropsSec.getBoolean("discord", Config.supplyDropsDiscord)
+        }
 
         Config.skullsGUIToggle = config.getInt("skullsGUIToggle", Config.skullsGUIToggle)
 
-        // duration: number (ms) or keep -1 disabled; optional string later
         Config.nationJoinCooldown = config.getLong("nationJoinCooldown", Config.nationJoinCooldown)
 
         Config.allowDestructionDuringSkirmish = config.getBoolean("allowDestructionDuringSkirmish", Config.allowDestructionDuringSkirmish)
@@ -650,21 +725,21 @@ public object Config {
         Config.occupiedHomeTeleportMultiplier = config.getDouble("occupiedHomeTeleportMultiplier", Config.occupiedHomeTeleportMultiplier)
 
         Config.allowControlInOccupiedTownList = parseUUIDSet(config, "allowControlInOccupiedTownList")
-        // ======================
 
-        // truce
         Config.trucePeriod = config.getLong("trucePeriod", Config.trucePeriod)
 
-        // ports
         Config.seaLevel = config.getDouble("seaLevel", Config.seaLevel)
         Config.portWarpTime = config.getDouble("portWarpTime", Config.portWarpTime) * 20.0 // time is in seconds, convert to ticks
         Config.allowPortWarpWithoutBoat = config.getBoolean("allowPortWarpWithoutBoat", Config.allowPortWarpWithoutBoat)
 
-        // discord
         Config.discordWebhookFlagWar = config.getString("discordWebhookFlagWar", Config.discordWebhookFlagWar)?.trim() ?: ""
         Config.discordWebhookWar = config.getString("discordWebhookWar", Config.discordWebhookWar)?.trim() ?: ""
         Config.discordRelayFlagWar = config.getBoolean("discordRelayFlagWar", Config.discordRelayFlagWar)
         Config.discordRelayWar = config.getBoolean("discordRelayWar", Config.discordRelayWar)
+        Config.discordWebhookRaids = config.getString("discordWebhookRaids", Config.discordWebhookRaids)?.trim() ?: ""
+        Config.discordWebhookWarzones = config.getString("discordWebhookWarzones", Config.discordWebhookWarzones)?.trim() ?: ""
+        Config.discordRelayRaids = config.getBoolean("discordRelayRaids", Config.discordRelayRaids)
+        Config.discordRelayWarzones = config.getBoolean("discordRelayWarzones", Config.discordRelayWarzones)
 
         if (config.isString("nationJoinCooldown")) {
             val raw = config.getString("nationJoinCooldown")
@@ -676,7 +751,6 @@ public object Config {
     }
 }
 
-// parse global resources section in config.yml
 private fun parseGlobalResources(globalResourcesSection: ConfigurationSection): TerritoryResources {
     val income: EnumMap<Material, Double> = EnumMap<Material, Double>(Material::class.java)
     val incomeSpawnEgg: EnumMap<EntityType, Double> = EnumMap<EntityType, Double>(EntityType::class.java)
@@ -687,15 +761,12 @@ private fun parseGlobalResources(globalResourcesSection: ConfigurationSection): 
     globalResourcesSection.getConfigurationSection("income")?.let { section ->
         for (item in section.getKeys(false)) {
             val itemName = item.uppercase()
-            // spawn egg
             if (itemName.startsWith("SPAWN_EGG_")) {
                 val entityType = EntityType.valueOf(itemName.replace("SPAWN_EGG_", ""))
                 if (entityType !== null) {
                     incomeSpawnEgg.put(entityType, section.getDouble(item))
                 }
-            }
-            // regular material
-            else {
+            } else {
                 val material = Material.matchMaterial(item)
                 if (material !== null) {
                     income.put(material, section.getDouble(item))
@@ -756,8 +827,7 @@ private fun parseGlobalResources(globalResourcesSection: ConfigurationSection): 
     )
 }
 
-// parse teleport material cost list:
-// material: amount
+// Parses a list of `material: amount`
 private fun parseTeleportCost(section: ConfigurationSection): EnumMap<Material, Int> {
     val materials: EnumMap<Material, Int> = EnumMap<Material, Int>(Material::class.java)
 
@@ -771,7 +841,6 @@ private fun parseTeleportCost(section: ConfigurationSection): EnumMap<Material, 
     return materials
 }
 
-// string format of teleport cost item list
 private fun teleportCostToString(materials: EnumMap<Material, Int>): String {
     var s = ""
 
@@ -789,9 +858,6 @@ private fun teleportCostToString(materials: EnumMap<Material, Int>): String {
     return s
 }
 
-/**
- * Load yaml uuid string list into a hashset of uuid
- */
 private fun parseUUIDSet(config: ConfigurationSection, listName: String): HashSet<UUID> {
     val uuids: HashSet<UUID> = hashSetOf()
 

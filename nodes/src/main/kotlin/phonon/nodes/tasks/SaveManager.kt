@@ -29,11 +29,7 @@ import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 
-/**
- * Runnable task to save world. This can be run either synchronously or
- * asynchronously by the caller.
- *
- */
+/** Saves the world; can run sync or async. */
 public class TaskSaveWorld(
     val residentsSnapshot: List<ResidentSaveState>,
     val townsSnapshot: List<TownSaveState>,
@@ -47,7 +43,6 @@ public class TaskSaveWorld(
     val backupTimestamp: Long,
 ) : Runnable {
     override fun run() {
-        // serialize world state
         val jsonStr = Serializer.worldToJson(
             residentsSnapshot,
             townsSnapshot,
@@ -57,44 +52,35 @@ public class TaskSaveWorld(
         saveStringToFile(jsonStr, pathTownSave)
 
         if (copyToDynmap) {
-            Files.createDirectories(pathDynmapDir) // create dynmap folder if it does not exist
+            Files.createDirectories(pathDynmapDir)
             Files.copy(pathTownSave, pathDynmapTowns, StandardCopyOption.REPLACE_EXISTING)
         }
 
-        // if backup timestamp millis timestamp (using System.currentTimeMillis())
-        // was provided, copy this saved world state to backup folder
+        // Also copy to the backup folder when a backup timestamp is given
         if (backupTimestamp > 0) {
             TaskSaveBackup(backupTimestamp, pathTownSave, pathBackupDir, pathLastBackupTime).run()
         }
     }
 }
 
-// backup format
 private val BACKUP_DATE_FORMATTER = SimpleDateFormat("yyyy.MM.dd.HH.mm.ss")
 
-/**
- * Save timestamped backup file of towns.json into backup folder.
- */
 internal class TaskSaveBackup(
-    val timestamp: Long, // millis timestamp from System.currentTimeMillis()
+    val timestamp: Long,
     val pathTowns: Path,
     val pathBackupDir: Path,
     val pathLastBackupTime: Path,
 ) : Runnable {
     override fun run() {
-        // val pathTowns = Config.pathTowns
-        // val pathBackupDir = Config.pathBackup
         if (Files.exists(pathTowns)) {
-            Files.createDirectories(pathBackupDir) // create backup folder if it does not exist
+            Files.createDirectories(pathBackupDir)
 
-            // save towns file backup
             val date = Date(timestamp)
             val backupName = "towns.${BACKUP_DATE_FORMATTER.format(date)}.json"
             val pathBackup = pathBackupDir.resolve(backupName)
             Files.copy(pathTowns, pathBackup)
         }
 
-        // save last backup timestamp to file
         saveStringToFile(timestamp.toString(), Config.pathLastBackupTime)
     }
 }
@@ -108,7 +94,6 @@ public class TaskSavePorts(
     val copyToDynmap: Boolean,
 ) : Runnable {
     override fun run() {
-        // serialize port state
         val jsonStr = Serializer.portsToJson(
             portGroupsSnapshot,
             portsSnapshot,
@@ -117,7 +102,7 @@ public class TaskSavePorts(
         saveStringToFile(jsonStr, pathPortSave)
 
         if (copyToDynmap) {
-            Files.createDirectories(pathDynmapDir) // create dynmap folder if it does not exist
+            Files.createDirectories(pathDynmapDir)
             Files.copy(pathPortSave, pathDynmapPorts, StandardCopyOption.REPLACE_EXISTING)
         }
     }
@@ -136,16 +121,13 @@ public object SaveManager {
             return
         }
 
-        // scheduler for saving world
         val task = object : Runnable {
 
             init {
-                // create save folder if it does not exist
                 Files.createDirectories(Paths.get(Config.pathPlugin).normalize())
             }
 
             public override fun run() {
-                // schedule main thread to run save
                 Bukkit.getScheduler().runTask(
                     plugin,
                     object : Runnable {

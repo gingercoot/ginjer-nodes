@@ -22,7 +22,7 @@ class StatsCommand :
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         when (label.lowercase()) {
             "leaderboard", "lb" -> cmdTop(sender, args)
-            else -> cmdStats(sender, args) // /stats and /kdr
+            else -> cmdStats(sender, args)
         }
         return true
     }

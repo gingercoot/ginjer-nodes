@@ -22,18 +22,12 @@ inline fun <reified K : Enum<K>, reified T> createEnumArrayMap(init: (K) -> T): 
 public class EnumArrayMap<K : Enum<K>, T>(
     val array: Array<T>,
 ) {
-    /**
-     * Getter and setter operators to allow `map[key]` style access.
-     */
     operator fun get(key: K) = this.array[key.ordinal]
 
     operator fun set(key: K, value: T) {
         this.array[key.ordinal] = value
     }
 
-    /**
-     * Return array size.
-     */
     public val size: Int get() = this.array.size
 
     /**

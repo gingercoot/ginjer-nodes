@@ -45,10 +45,8 @@ import java.util.HashSet
 public class FastBlockEditSession(
     val bukkitWorld: org.bukkit.World,
 ) {
-    // nms world
     private val world = (bukkitWorld as CraftWorld).getHandle()
 
-    // blocks that were modified in this session
     private val modified: HashMap<NMSBlockPos, NMSBlockState> = hashMapOf()
 
     /**
@@ -79,7 +77,6 @@ public class FastBlockEditSession(
      * https://nms.screamingsandals.org/1.18.2/net/minecraft/server/level/ServerChunkCache.html
      */
     public fun execute(updateLighting: Boolean) {
-        // modify blocks
         val chunks: HashSet<NMSChunk> = hashSetOf()
         for ((bPos, bState) in modified) {
             val chunk = world.getChunkSource().getChunk(bPos.getX() shr 4, bPos.getZ() shr 4, true)
@@ -89,7 +86,6 @@ public class FastBlockEditSession(
             }
         }
 
-        // update lighting
         val lightingEngine = world.getChunkSource().getLightEngine()
         if (updateLighting) {
             for (pos in modified.keys) {
@@ -97,7 +93,6 @@ public class FastBlockEditSession(
             }
         }
 
-        // send chunk updates to players
         for (chunk in chunks) {
             val packetChunk = NMSPacketLevelChunkWithLightPacket(chunk, chunk.getLevel().getLightEngine(), null, null, true)
 

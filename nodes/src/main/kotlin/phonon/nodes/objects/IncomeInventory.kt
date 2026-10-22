@@ -28,18 +28,13 @@ import java.util.EnumMap
 
 public class IncomeInventory : InventoryHolder {
 
-    // normal items:
-    // map material -> current amount of it in storage
     val storage: EnumMap<Material, Int> = EnumMap<Material, Int>(Material::class.java)
 
-    // storage for spawn eggs
     val storageSpawnEgg: EnumMap<EntityType, Int> = EnumMap<EntityType, Int>(EntityType::class.java)
 
-    // inventory gui object, only populate when open
     @Suppress("PropertyName")
     val _inventory: Inventory = Bukkit.createInventory(this, 54, "Town Income")
 
-    // internal, add items to storage
     @Suppress("FunctionName")
     private fun _add(mat: Material, amount: Int) {
         this.storage.get(mat)?.let { current ->
@@ -49,7 +44,6 @@ public class IncomeInventory : InventoryHolder {
         }
     }
 
-    // internal, add items to spawn egg storage
     @Suppress("FunctionName")
     private fun _addSpawnEgg(type: EntityType, amount: Int) {
         this.storageSpawnEgg.get(type)?.let { current ->
@@ -59,31 +53,18 @@ public class IncomeInventory : InventoryHolder {
         }
     }
 
-    // public interface to add new items to storage
-    // meta: integer metadata depends on material, either EntityType or damage value
+    // meta: EntityType ordinal or damage value, depending on material
     public fun add(mat: Material, amount: Int, meta: Int = 0) {
         if (amount <= 0) {
             return
         }
 
         this._add(mat, amount)
-
-        // 1.12 handler, special path for monster egg
-        // if ( mat == Material.MONSTER_EGG ) {
-        //     val entityType = entityTypeFromOrdinal(meta)
-        //     this._addSpawnEgg(entityType, amount)
-        // }
-        // else {
-        //     this._add(mat, amount)
-        // }
     }
 
-    // checks if any items in inventory or storage
     public fun empty(): Boolean = (storage.size == 0) && (storageSpawnEgg.size == 0)
 
-    // implement getInventory for InventoryHolder
     public override fun getInventory(): Inventory {
-        // populate inventory
         while (this.storage.size > 0) {
             val item = this.storage.iterator().next()
             val material = item.key
@@ -97,27 +78,6 @@ public class IncomeInventory : InventoryHolder {
                 return this._inventory
             }
         }
-
-        // 1.12 spawn egg add
-        // while ( this.storageSpawnEgg.size > 0 ) {
-        //     val item = this.storageSpawnEgg.iterator().next()
-        //     val type = item.key
-        //     val amount = item.value
-        //     this.storageSpawnEgg.remove(type)
-
-        //     // create spawn egg with specific type
-        //     val itemStack = ItemStack(Material.MONSTER_EGG, amount)
-        //     val itemMeta: SpawnEggMeta = itemStack.getItemMeta() as SpawnEggMeta
-        //     itemMeta.setSpawnedType(type)
-        //     itemStack.setItemMeta(itemMeta)
-
-        //     val itemsFailedToAdd = this._inventory.addItem(itemStack)
-        //     if ( itemsFailedToAdd.size > 0 ) {
-        //         val leftoverItems = itemsFailedToAdd.get(0)!!
-        //         this.storageSpawnEgg.put(type, leftoverItems.amount)
-        //         return this._inventory
-        //     }
-        // }
 
         return this._inventory
     }
@@ -141,16 +101,6 @@ public class IncomeInventory : InventoryHolder {
         if (viewers.size == 0 || force) {
             for (itemStack in this._inventory.iterator()) {
                 if (itemStack != null) {
-                    // 1.12 special path spawn eggs
-                    // if ( itemStack.type == Material.MONSTER_EGG ) {
-                    //     val meta: SpawnEggMeta = itemStack.getItemMeta() as SpawnEggMeta
-                    //     val entityType = meta.getSpawnedType()
-                    //     this._addSpawnEgg(entityType, itemStack.amount)
-                    // }
-                    // else {
-                    //     this._add(itemStack.type, itemStack.amount)
-                    // }
-
                     this._add(itemStack.type, itemStack.amount)
 
                     hasMovedItems = true

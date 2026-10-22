@@ -32,7 +32,6 @@ public class WarCommand :
     TabCompleter {
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
-        // no args, print help
         if (args.size == 0) {
             Nodes.war.printInfo(sender, false)
             printHelp(sender)
@@ -66,7 +65,6 @@ public class WarCommand :
             return true
         }
 
-        // parse target
         parseTownOrNationName(player, args, town, nation)
 
         return true
@@ -90,15 +88,13 @@ public class WarCommand :
     private fun parseTownOrNationName(player: Player, args: Array<String>, town: Town, townNation: Nation?) {
         val target = args[0]
 
-        // 1. try war on nation
         var enemyNation = Nodes.nations.get(target)
         if (enemyNation !== null) {
             declareWar(player, town, enemyNation.capital, townNation, enemyNation)
             return
         }
 
-        // 2. try war on town
-        //    if town has nation, auto declare war on nation
+        // Else a town (war is declared on its nation if it has one)
         val enemyTown = Nodes.towns.get(target)
         if (enemyTown !== null) {
             if (enemyTown === town) {
@@ -118,15 +114,12 @@ public class WarCommand :
         Message.error(player, "Town or nation \"${target}\" does not exist")
     }
 
-    // tries to declare war on another town
     private fun declareWar(player: Player, town: Town, enemy: Town, townNation: Nation?, enemyNation: Nation?) {
-        // cannot declare war on self
         if (town === enemy) {
             Message.error(player, "You cannot declare war on yourself")
             return
         }
 
-        // cannot war allies or truce
         if (town.allies.contains(enemy) || enemy.allies.contains(town)) {
             Message.error(player, "You cannot declare war on an ally")
             return
@@ -136,13 +129,11 @@ public class WarCommand :
             return
         }
 
-        // check if already in war
         if (town.enemies.contains(enemy) || enemy.enemies.contains(town)) {
             Message.error(player, "You are already at war with ${enemy.name}")
             return
         }
 
-        // make enemies
         val result = Nodes.addEnemy(town, enemy)
         if (result.isSuccess) {
             if (townNation !== null) {

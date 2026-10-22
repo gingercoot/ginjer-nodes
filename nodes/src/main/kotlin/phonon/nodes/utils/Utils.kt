@@ -4,7 +4,6 @@
 
 package phonon.nodes.utils
 
-// check restrictions on string inputs
 public fun stringInputIsValid(s: String, maxLength: Int = 32): Boolean {
     if (s.length > maxLength) {
         return false
@@ -17,7 +16,6 @@ public fun stringInputIsValid(s: String, maxLength: Int = 32): Boolean {
     return true
 }
 
-// escape format string characters
 public fun sanitizeString(s: String): String {
     var sEscaped = s.replace("$", "\$")
     sEscaped = sEscaped.replace("%", "%%")
@@ -76,6 +74,5 @@ public fun estimateNumDigits(x: Int): Int {
         }
     }
 
-    // return next closest num digits
     return 11
 }

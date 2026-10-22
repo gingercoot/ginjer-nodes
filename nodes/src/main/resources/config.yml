@@ -315,3 +315,102 @@ portWarpTime: 5.0
 
 # allow port warp without a boat
 allowPortWarpWithoutBoat: false
+
+# ===========================================
+# Supply Lines
+# ===========================================
+# Territories that can't reach the town's home through the town's own,
+# nation or allied territories get reduced income.
+supplyLines:
+  enabled: true
+  # income multiplier for cut-off territories (0.0 - 1.0)
+  cutIncomeMultiplier: 0.25
+  # flag capture time multiplier on cut-off territories for enemy attackers
+  # (0.5 = captured twice as fast, 1.0 = no change)
+  cutCaptureTimeMultiplier: 0.5
+  # a territory blocks supply when this fraction of its chunks is held by
+  # enemies (an enemy-captured core always blocks). 0 = only core captures block
+  chunkBlockFraction: 0.5
+  # wasteland (land/sea with no territories, and unclaimed territories)
+  # connects every territory touching it, so islands stay supplied as long
+  # as your home can reach wasteland through supplied territories
+  wastelandRoutes: true
+
+# ===========================================
+# Supply Drops
+# ===========================================
+# Drops land at points set with /supplydrop addpoint. Loot is set with
+# /supplydrop loot add while holding an item.
+supplyDrops:
+  enabled: true
+  # time between drops, plus or minus a random jitter
+  intervalMinutes: 180
+  jitterMinutes: 30
+  # warning before the drop lands (players can travel to it)
+  warningSeconds: 300
+  # drop disappears if nobody claims it in time
+  despawnMinutes: 20
+  # the chest slowly falls from this many blocks up during the warning
+  fallHeight: 60
+  # right-click the drop and stay inside the ring for this long to claim it;
+  # leaving the ring interrupts the claim
+  claimSeconds: 60
+  claimRadius: 4.0
+  # loot rolls per drop (weighted by each entry's weight)
+  itemsPerDrop: 3
+  # skip a drop if fewer players are online
+  minPlayersOnline: 5
+  # announce drops on the war Discord webhook
+  discord: true
+
+# ===========================================
+# Discord: raids and warzones
+# ===========================================
+# separate webhooks for raid / warzone announcements
+# (leave empty to use discordWebhookWar)
+discordWebhookRaids: ""
+discordWebhookWarzones: ""
+discordRelayRaids: true
+discordRelayWarzones: true
+
+# ===========================================
+# Vassals
+# ===========================================
+vassals:
+  enabled: true
+  # fraction of the vassal's income paid to the overlord each income cycle
+  tributeRate: 0.2
+  # how long a vassal must wait before it can /vassal revolt
+  revoltCooldownHours: 72
+  offerTimeoutSeconds: 120
+
+# ===========================================
+# Fortified nodes
+# ===========================================
+# /t fortify upgrades the territory you're in. Costs and upkeep are paid
+# from the town's fortification treasury (members add items with
+# /t fortify deposit). Upkeep is taken every income cycle and the level
+# drops by 1 if the treasury can't pay it. Enemy flag capture time is
+# multiplied. Any materials work for cost/upkeep, and you can add or remove
+# levels. The treasury only accepts materials used below.
+fortify:
+  enabled: true
+  levels:
+    1:
+      captureTimeMultiplier: 1.25
+      cost:
+        IRON_BLOCK: 8
+      upkeep:
+        IRON_INGOT: 4
+    2:
+      captureTimeMultiplier: 1.5
+      cost:
+        GOLD_BLOCK: 8
+      upkeep:
+        GOLD_INGOT: 4
+    3:
+      captureTimeMultiplier: 2.0
+      cost:
+        DIAMOND_BLOCK: 4
+      upkeep:
+        DIAMOND: 2

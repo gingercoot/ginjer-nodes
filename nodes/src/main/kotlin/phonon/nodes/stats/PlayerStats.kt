@@ -64,8 +64,6 @@ object PlayerStats {
 
     fun formatLine(name: String, rec: KillDeathRecord): String = "${ChatColor.YELLOW}$name ${ChatColor.WHITE}${rec.kills}K / ${rec.deaths}D ${ChatColor.GRAY}(KDR ${rec.kdrString()})"
 
-    // ----- leaderboards -----
-
     fun topKills(n: Int = 10): List<Pair<String, KillDeathRecord>> = topBy(n) { it.kills.toDouble() }
 
     fun topDeaths(n: Int = 10): List<Pair<String, KillDeathRecord>> = topBy(n) { it.deaths.toDouble() }
@@ -131,8 +129,6 @@ object PlayerStats {
             Message.print(sender, "  ${ChatColor.GRAY}${i + 1}. ${formatLine(name, rec)}")
         }
     }
-
-    // ----- persistence -----
 
     var needsSave: Boolean = false
     private var saveTask: org.bukkit.scheduler.BukkitTask? = null

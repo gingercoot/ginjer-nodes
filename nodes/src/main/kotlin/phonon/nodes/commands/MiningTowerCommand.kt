@@ -11,6 +11,8 @@ import phonon.nodes.Message
 import phonon.nodes.mining.MiningTowers
 import phonon.nodes.mining.TowerReward
 
+private const val PERM_ADMIN = "nodes.miningtower.admin"
+
 /**
  * /miningtower | /mt
  *
@@ -23,29 +25,35 @@ class MiningTowerCommand :
     TabCompleter {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
-        if (!sender.hasPermission("nodes.admin") && !sender.isOp) {
-            Message.error(sender, "No permission")
-            return true
-        }
         if (args.isEmpty()) {
             printHelp(sender)
             return true
         }
         when (args[0].lowercase()) {
             "help" -> printHelp(sender)
-            "create", "place" -> cmdCreate(sender, args)
-            "remove", "delete" -> cmdRemove(sender, args)
+            "create", "place" -> if (requireAdmin(sender)) cmdCreate(sender, args)
+            "remove", "delete" -> if (requireAdmin(sender)) cmdRemove(sender, args)
             "list" -> cmdList(sender)
             else -> printHelp(sender)
         }
         return true
     }
 
+    private fun isAdmin(sender: CommandSender): Boolean = sender.hasPermission(PERM_ADMIN)
+
+    private fun requireAdmin(sender: CommandSender): Boolean {
+        if (isAdmin(sender)) return true
+        Message.error(sender, "You do not have permission to do that")
+        return false
+    }
+
     private fun printHelp(sender: CommandSender) {
-        Message.print(sender, "${ChatColor.BOLD}[Mining Towers]")
-        Message.print(sender, "/mt create <id> <cooldown> <item> <amt> [item amt ...]${ChatColor.WHITE}: cooldown e.g. 30m, 3h")
-        Message.print(sender, "/mt remove <id>")
-        Message.print(sender, "/mt list")
+        Message.print(sender, "${ChatColor.BOLD}[Nodes] Mining tower commands:")
+        Message.print(sender, "/miningtower list${ChatColor.WHITE}: List mining towers")
+        if (isAdmin(sender)) {
+            Message.print(sender, "/miningtower create <id> <cooldown> <item> <amount> [item amount ...]${ChatColor.WHITE}: Create a tower at your feet (cooldown e.g. 30m, 3h)")
+            Message.print(sender, "/miningtower remove <id>${ChatColor.WHITE}: Remove a tower")
+        }
     }
 
     private fun cmdCreate(sender: CommandSender, args: Array<out String>) {
@@ -138,9 +146,10 @@ class MiningTowerCommand :
         args: Array<out String>,
     ): List<String> {
         if (args.size == 1) {
-            return listOf("create", "remove", "list", "help").filter { it.startsWith(args[0].lowercase()) }
+            val subs = if (isAdmin(sender)) listOf("create", "remove", "list", "help") else listOf("list", "help")
+            return subs.filter { it.startsWith(args[0].lowercase()) }
         }
-        if (args.size == 2 && args[0].equals("remove", true)) {
+        if (args.size == 2 && args[0].equals("remove", true) && isAdmin(sender)) {
             return MiningTowers.towers.keys.filter { it.lowercase().startsWith(args[1].lowercase()) }.sorted()
         }
         return listOf()

@@ -27,7 +27,6 @@ import org.bukkit.scoreboard.Scoreboard
 import phonon.nodes.PlayerScoreboardManager
 import phonon.nodes.WorldMap
 
-// max min allowed sizes
 private val MAP_RADIUS_MIN = 5
 private val MAP_RADIUS_MAX = 9
 
@@ -52,7 +51,6 @@ private val LINE_ID = arrayOf(
     "${ChatColor.YELLOW}${ChatColor.RESET}",
 )
 
-// line header displaying X edges
 private val HEADER = arrayOf(
     "${ChatColor.RED}-3    0      3",
     "${ChatColor.RED}-4      0        4",
@@ -64,15 +62,12 @@ public class Minimap(
     val player: Player,
     var size: Int, // display square half extend, renders [-size, size]
 ) {
-    // rendering targets for Scoreboard API
     val scoreboard: Scoreboard
     val objective: Objective
 
     init {
-        // ensure size within limits [3..5]
         this.size = Math.min(5, Math.max(3, this.size))
 
-        // create scoreboard
         val scoreboard = PlayerScoreboardManager.getScoreboard(player.getUniqueId())
 
         // team required for objective
@@ -83,13 +78,11 @@ public class Minimap(
 
         val objective = scoreboard.getObjective("player") ?: scoreboard.registerNewObjective("player", "minimap", "Minimap")
         objective.setDisplaySlot(DisplaySlot.SIDEBAR)
-        // objective.setDisplayName("Minimap")
 
         this.scoreboard = scoreboard
         this.objective = objective
         player.setScoreboard(this.scoreboard)
 
-        // initial render, get player current location
         val world = Bukkit.getWorlds()[0]
         val loc = this.player.getLocation()
         val coordX = kotlin.math.floor(loc.x).toInt()
@@ -99,14 +92,11 @@ public class Minimap(
         this.render(coord)
     }
 
-    // render minimap centered at coord (current player location)
     public fun render(coord: Coord) {
-        // clear previous render
         for (entry in this.scoreboard.getEntries()) {
             this.scoreboard.resetScores(entry)
         }
 
-        // create new render
         val score = this.objective.getScore(HEADER[size - 3])
         score.setScore(size + 1)
 
@@ -120,7 +110,6 @@ public class Minimap(
     }
 
     public fun destroy() {
-        // set player to new scoreboard
         this.scoreboard.clearSlot(DisplaySlot.SIDEBAR)
         player.setScoreboard(Bukkit.getScoreboardManager().getNewScoreboard())
     }

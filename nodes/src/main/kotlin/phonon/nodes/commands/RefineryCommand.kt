@@ -44,19 +44,25 @@ class RefineryCommand :
         return true
     }
 
+    private fun isAdmin(sender: CommandSender): Boolean = sender.hasPermission("nodes.refinery.admin")
+
     private fun requireAdmin(sender: CommandSender): Boolean {
-        if (sender.hasPermission("nodes.admin") || sender.isOp) return true
+        if (isAdmin(sender)) return true
         Message.error(sender, "No permission")
         return false
     }
 
     private fun printHelp(sender: CommandSender) {
-        Message.print(sender, "${ChatColor.BOLD}[Refineries]")
-        Message.print(sender, "/refinery create <id> <interval>${ChatColor.WHITE}: place dropper (e.g. 2h)")
-        Message.print(sender, "/refinery setoutput <id> <amount>${ChatColor.WHITE}: hold item, add as output")
-        Message.print(sender, "/refinery clearoutputs <id>")
-        Message.print(sender, "/refinery clearbuffer <id>")
-        Message.print(sender, "/refinery list | info <id> | remove <id>")
+        Message.print(sender, "${ChatColor.BOLD}[Nodes] Refinery commands:")
+        Message.print(sender, "/refinery list${ChatColor.WHITE}: List refineries")
+        Message.print(sender, "/refinery info <id>${ChatColor.WHITE}: Refinery details and outputs")
+        if (isAdmin(sender)) {
+            Message.print(sender, "/refinery create <id> <interval>${ChatColor.WHITE}: Place a refinery at your feet (e.g. 2h)")
+            Message.print(sender, "/refinery setoutput <id> <amount>${ChatColor.WHITE}: Add the held item as an output")
+            Message.print(sender, "/refinery clearoutputs <id>${ChatColor.WHITE}: Remove all outputs")
+            Message.print(sender, "/refinery clearbuffer <id>${ChatColor.WHITE}: Empty stored output")
+            Message.print(sender, "/refinery remove <id>${ChatColor.WHITE}: Remove a refinery")
+        }
     }
 
     private fun cmdCreate(sender: CommandSender, args: Array<out String>) {
@@ -208,29 +214,21 @@ class RefineryCommand :
         alias: String,
         args: Array<out String>,
     ): List<String> {
+        val admin = isAdmin(sender)
         if (args.size == 1) {
-            return listOf(
-                "create",
-                "setoutput",
-                "clearoutputs",
-                "clearbuffer",
-                "list",
-                "remove",
-                "info",
-                "help",
-            ).filter { it.startsWith(args[0].lowercase()) }
+            val subs = if (admin) {
+                listOf("create", "setoutput", "clearoutputs", "clearbuffer", "list", "remove", "info", "help")
+            } else {
+                listOf("list", "info", "help")
+            }
+            return subs.filter { it.startsWith(args[0].lowercase()) }
         }
-        if (args.size == 2 &&
-            args[0].lowercase() in listOf(
-                "setoutput",
-                "clearoutputs",
-                "clearbuffer",
-                "remove",
-                "info",
-                "output",
-                "addoutput",
-            )
-        ) {
+        val idSubs = if (admin) {
+            listOf("setoutput", "clearoutputs", "clearbuffer", "remove", "info", "output", "addoutput")
+        } else {
+            listOf("info")
+        }
+        if (args.size == 2 && args[0].lowercase() in idSubs) {
             return Refineries.byId.keys.filter { it.lowercase().startsWith(args[1].lowercase()) }.sorted()
         }
         return listOf()

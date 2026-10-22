@@ -59,7 +59,6 @@ object RefineryGui {
         }
     }
 
-    /** Push fresh book/chest into all open refinery GUIs. */
     fun refreshOpenGuis() {
         if (openViewers.isEmpty()) return
 
@@ -93,7 +92,6 @@ object RefineryGui {
     private fun ensureRefreshTask() {
         val plugin = Nodes.plugin ?: return
         if (refreshTask != null && refreshTask?.isCancelled == false) return
-        // every 1 second
         refreshTask = Bukkit.getScheduler().runTaskTimer(
             plugin,
             Runnable { refreshOpenGuis() },

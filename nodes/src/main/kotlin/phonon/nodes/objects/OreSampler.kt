@@ -33,20 +33,16 @@ import java.util.ArrayDeque
 import java.util.Deque
 import java.util.concurrent.ThreadLocalRandom
 
-// game heights constants
 val Y_WORLD_MIN = 0
 val Y_WORLD_MAX = 255
 
-// random number generator
 private val random = ThreadLocalRandom.current()
 
-/**
- * Probability distribution sampler of array of different OreDeposit
- */
+/** Alias-method sampler over a list of OreDeposit. */
 private class ItemDistribution(inputItems: List<OreDeposit>) {
 
-    val size: Int // number of items in distribution
-    val probability: DoubleArray // Pr of item in items
+    val size: Int
+    val probability: DoubleArray
     val items: Array<OreDeposit?> // main item list (null = None)
     val alias: Array<OreDeposit?> // alias of item when Pr roll fails
 
@@ -61,26 +57,21 @@ private class ItemDistribution(inputItems: List<OreDeposit>) {
             prSum += item.dropChance
         }
 
-        // if probabilities < 1, add
         if (prSum < 1.0) {
             itemsTemp.add(null)
             probabilityTemp.add(1.0 - prSum)
             prSum = 1.0
         }
 
-        // average probability
         val n = itemsTemp.size
         val prAvg: Double = 1.0 / n
 
-        // alias table and probabilities that will be saved to object
         val aliasTemp: Array<OreDeposit?> = arrayOfNulls(n)
         val probabilities: DoubleArray = DoubleArray(n)
 
-        // stacks for small, large pr
         val small: Deque<Int> = ArrayDeque<Int>()
         val large: Deque<Int> = ArrayDeque<Int>()
 
-        // normalize probabilities and populate small, large queues
         for (i in 0 until n) {
             probabilityTemp[i] = probabilityTemp[i] / prSum
             if (probabilityTemp[i] >= prAvg) {
@@ -94,11 +85,9 @@ private class ItemDistribution(inputItems: List<OreDeposit>) {
             val less = small.removeLast()
             val more = large.removeLast()
 
-            // scale probability so 1/n given weight 1.0
             probabilities[less] = probabilityTemp[less] * n
             aliasTemp[less] = itemsTemp[more]
 
-            // decrease probability of more
             probabilityTemp[more] = probabilityTemp[more] + probabilityTemp[less] - prAvg
 
             if (probabilityTemp[more] >= prAvg) {
@@ -122,7 +111,6 @@ private class ItemDistribution(inputItems: List<OreDeposit>) {
         this.alias = aliasTemp
     }
 
-    // return item from probability distribution
     public fun sample(): List<ItemStack> {
         val roll = random.nextInt(this.size)
         val p = random.nextDouble()
@@ -132,7 +120,6 @@ private class ItemDistribution(inputItems: List<OreDeposit>) {
             this.alias[roll]
         }
 
-        // uniform sample number of drops
         if (oreDeposit !== null) {
             val minAmount = oreDeposit.minAmount
             val maxAmount = oreDeposit.maxAmount
@@ -143,15 +130,12 @@ private class ItemDistribution(inputItems: List<OreDeposit>) {
         return listOf()
     }
 
-    // return item from all ores in this distribution
-    // that satisfy the roll
     public fun sampleAll(): List<ItemStack> {
         val roll = random.nextDouble()
         val drops: MutableList<ItemStack> = mutableListOf()
 
         items.forEach { type ->
             if (type != null) {
-                // successful drop
                 if (roll < type.dropChance) {
                     val minAmount = type.minAmount
                     val maxAmount = type.maxAmount
@@ -165,20 +149,12 @@ private class ItemDistribution(inputItems: List<OreDeposit>) {
     }
 }
 
-/**
- * OreSampler
- *
- * Handle ore distribution sampling at different y-levels
- * Map each y -> ItemDistribution
- */
+/** Samples ore drops by y-level (each y maps to an ItemDistribution). */
 class OreSampler(
     val ores: ArrayList<OreDeposit>,
 ) {
-    // array maps each y height level -> OreTable
-    // array is thus always 256 sized pointers to OreTable
     private val itemsAtHeight: Array<ItemDistribution?> = arrayOfNulls(256)
 
-    // contains any ore at some height
     val containsOre: Boolean = ores.size > 0
 
     init {
@@ -187,7 +163,6 @@ class OreSampler(
         var yEnd: Int = Y_WORLD_MAX
         while (yStart < Y_WORLD_MAX) {
 
-            // find closest interval edge
             yEnd = ores.fold(yEnd, { y, oreDeposit ->
                 if (oreDeposit.ymin > yStart) {
                     Math.min(y, oreDeposit.ymin - 1) // don't include next interval start
@@ -212,15 +187,12 @@ class OreSampler(
                 this.itemsAtHeight[i] = items
             }
 
-            // move interval up
             yStart = yEnd + 1
             yEnd = Y_WORLD_MAX
         }
     }
 
-    // sample ore deposits distribution at given height
     public fun sample(y: Int): List<ItemStack> {
-        // ensure y in [0, 255]
         if (y >= Y_WORLD_MIN && y <= Y_WORLD_MAX) {
             val sampler = this.itemsAtHeight[y]
             if (sampler !== null) {
@@ -231,10 +203,7 @@ class OreSampler(
         return listOf()
     }
 
-    // simple sample, iterate all ore types and sample
-    // return every sample which roll < chance
     public fun sampleAll(y: Int): List<ItemStack> {
-        // ensure y in [0, 255]
         if (y >= Y_WORLD_MIN && y <= Y_WORLD_MAX) {
             val sampler = this.itemsAtHeight[y]
             if (sampler !== null) {

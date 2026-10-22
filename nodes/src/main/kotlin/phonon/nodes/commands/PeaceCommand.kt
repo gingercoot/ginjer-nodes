@@ -32,7 +32,6 @@ public class PeaceCommand :
     TabCompleter {
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
-        // no args, print help
         if (args.size == 0) {
             printHelp(sender)
             return true
@@ -78,7 +77,7 @@ public class PeaceCommand :
     }
 
     private fun printHelp(sender: CommandSender) {
-        Message.print(sender, "[Nodes] Peace commands:")
+        Message.print(sender, "${ChatColor.BOLD}[Nodes] Peace commands:")
         Message.print(sender, "/peace [town]${ChatColor.WHITE}: Offer/accept peace with town")
         Message.print(sender, "/peace [nation]${ChatColor.WHITE}: Offer/accept peace with nation")
         return
@@ -87,15 +86,13 @@ public class PeaceCommand :
     private fun parseTownOrNationName(player: Player, args: Array<String>, town: Town, townNation: Nation?) {
         val target = args[0]
 
-        // 1. try nation
         var enemyNation = Nodes.nations.get(target)
         if (enemyNation !== null) {
             offerPeace(player, town, enemyNation.capital, townNation, enemyNation)
             return
         }
 
-        // 2. try town
-        //    if town has nation, use nation
+        // Else a town (resolved to its nation if it has one)
         val enemyTown = Nodes.towns.get(target)
         if (enemyTown !== null) {
             enemyNation = enemyTown.nation
@@ -110,16 +107,15 @@ public class PeaceCommand :
         Message.error(player, "Town or nation \"${target}\" does not exist")
     }
 
-    // offer peace: open treaty gui dialog
     private fun offerPeace(player: Player, town: Town, enemy: Town, townNation: Nation?, enemyNation: Nation?) {
         if (town === enemy) {
             Message.error(player, "You cannot make a peace treaty with yourself.")
             return
         }
 
-        // returns true if treaty exists, else false creates new treaty
+        // false = a new treaty was created
         val result = Treaty.show(player, town, enemy)
-        if (result === false) { // print messages indicating new treaty occuring
+        if (result === false) {
             val enemyName = if (enemyNation !== null) {
                 "nation ${enemyNation.name}"
             } else {
@@ -132,7 +128,6 @@ public class PeaceCommand :
                 town.name
             }
 
-            // print message for town residents
             if (townNation !== null) {
                 for (r in townNation.residents) {
                     val p = r.player()
@@ -149,7 +144,6 @@ public class PeaceCommand :
                 }
             }
 
-            // print message for enemy residents
             if (enemyNation !== null) {
                 for (r in enemyNation.residents) {
                     val p = r.player()

@@ -56,7 +56,6 @@ object MiningBoost {
     /** Tier 1 → +0.5 amount each tier (1.5, 2.0, …). */
     const val AMOUNT_STEP = 0.5
 
-    /** Max tier of boost */
     const val MAX_TIER = 12
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -256,7 +255,7 @@ object MiningBoost {
             bar.addPlayer(player)
         }
         bar.isVisible = true
-        val amountMul = 1.0 + tier * AMOUNT_STEP // 1.5, 2.0, 2.5, …
+        val amountMul = 1.0 + tier * AMOUNT_STEP
         bar.setTitle(
             "${ChatColor.GREEN}Mining Boost ${ChatColor.WHITE}tier: $tier " +
                 "${ChatColor.GRAY}multiplier ${amountMul}x " +

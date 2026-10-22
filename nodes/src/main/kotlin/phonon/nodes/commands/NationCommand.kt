@@ -25,8 +25,8 @@ import phonon.nodes.utils.string.filterNation
 import phonon.nodes.utils.string.filterNationTown
 import phonon.nodes.utils.string.filterTown
 import phonon.nodes.utils.stringInputIsValid
+import phonon.nodes.vassal.Vassals
 
-// list of all subcommands, used for onTabComplete
 private val subcommands: List<String> = listOf(
     "help",
     "announce",
@@ -44,6 +44,7 @@ private val subcommands: List<String> = listOf(
     "color",
     "rename",
     "online",
+    "onlinetop",
     "info",
     "spawn",
 )
@@ -98,10 +99,8 @@ public class NationCommand :
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
         val player = if (sender is Player) sender else null
 
-        // no args, print current nation info
         if (args.size == 0) {
             if (player != null) {
-                // print player's nation info
                 val resident = Nodes.getResident(player)
                 if (resident != null && resident.nation != null) {
                     resident.nation!!.printInfo(player)
@@ -111,7 +110,6 @@ public class NationCommand :
             return true
         }
 
-        // parse subcommand
         when (args[0].lowercase()) {
             "help" -> printHelp(sender)
             "announce" -> nationAnnounce(player, args)
@@ -129,6 +127,7 @@ public class NationCommand :
             "color" -> setColor(player, args)
             "rename" -> renameNation(player, args)
             "online" -> getOnline(player, args)
+            "onlinetop" -> onlineTop(player)
             "info" -> getInfo(player, args)
             "spawn" -> goToNationTownSpawn(player, args)
             else -> {
@@ -146,22 +145,16 @@ public class NationCommand :
             return listOf()
         }
 
-        // match subcommand
         if (args.size == 1) {
             return filterByStart(subcommands, args[0])
-        }
-        // match each subcommand format
-        else if (args.size > 1) {
-            // handle specific subcommands
+        } else if (args.size > 1) {
             when (args[0].lowercase()) {
-                // /nation invite town
                 "invite" -> {
                     if (args.size == 2) {
                         return filterTown(args[1])
                     }
                 }
 
-                // /nation [subcommand] [nation]
                 "list",
                 "online",
                 "info",
@@ -171,7 +164,6 @@ public class NationCommand :
                     }
                 }
 
-                // /nation [subcommand] [nation town]
                 "capital",
                 "spawn",
                 -> {
@@ -196,6 +188,8 @@ public class NationCommand :
         Message.print(sender, "/nation leave${ChatColor.WHITE}: Leave your nation")
         Message.print(sender, "/nation invite${ChatColor.WHITE}: Invite a nation to your nation")
         Message.print(sender, "/nation list${ChatColor.WHITE}: List all nations")
+        Message.print(sender, "/nation online${ChatColor.WHITE} online players in a nation")
+        Message.print(sender, "/nation onlinetop${ChatColor.WHITE}: Top nations by online players")
         Message.print(sender, "/nation color${ChatColor.WHITE}: Set nation color on map")
         return
     }
@@ -214,7 +208,6 @@ public class NationCommand :
             return
         }
 
-        // do not allow during war
         if (Nodes.war.enabled == true) {
             Message.error(player, "Cannot create nations during war")
             return
@@ -231,7 +224,6 @@ public class NationCommand :
             return
         }
 
-        // only allow leaders to create nation
         if (resident !== town.leader) {
             Message.error(player, "Only the town leader can form a nation")
             return
@@ -240,6 +232,11 @@ public class NationCommand :
         val name = args[1]
         if (!stringInputIsValid(name)) {
             Message.error(player, "Invalid nation name")
+            return
+        }
+
+        if (Vassals.isVassal(town)) {
+            Message.error(player, "A vassal cannot form a nation")
             return
         }
 
@@ -264,7 +261,6 @@ public class NationCommand :
             return
         }
 
-        // check if player is nation leader
         val resident = Nodes.getResident(player)
         if (resident == null) {
             return
@@ -282,7 +278,6 @@ public class NationCommand :
             return
         }
 
-        // do not allow during war
         if (Nodes.war.enabled == true) {
             Message.error(player, "Cannot delete your nation during war")
             return
@@ -301,7 +296,6 @@ public class NationCommand :
             return
         }
 
-        // check if player is nation leader
         val resident = Nodes.getResident(player)
         if (resident == null) {
             return
@@ -330,13 +324,11 @@ public class NationCommand :
             return
         }
 
-        // do not allow during war
         if (Nodes.war.enabled == true && Config.canLeaveNationDuringWar == false) {
             Message.error(player, "Cannot leave your nation during war")
             return
         }
 
-        // remove town
         Nodes.removeTownFromNation(nation, town)
 
         for (r in town.residents) {
@@ -394,7 +386,6 @@ public class NationCommand :
 
         Nodes.setNationCapital(nation, newCapital)
 
-        // broadcast message
         Message.broadcast("${ChatColor.BOLD}${newCapital.name} is now the capital of ${nation.name}")
     }
 
@@ -499,6 +490,12 @@ public class NationCommand :
             return
         }
 
+        val joiningTown = resident.town
+        if (joiningTown != null && Vassals.isVassal(joiningTown)) {
+            Message.error(player, "A vassal cannot join a nation")
+            return
+        }
+
         Message.print(player, "${resident.town?.name} is now a jurisdiction of ${resident.invitingNation?.name}!")
         Message.print(resident.invitingPlayer, "${resident.town?.name} has accepted your authority!")
 
@@ -570,7 +567,6 @@ public class NationCommand :
             return
         }
 
-        // check if player is town leader
         val resident = Nodes.getResident(player)
         if (resident == null) {
             return
@@ -587,7 +583,6 @@ public class NationCommand :
             return
         }
 
-        // parse color
         try {
             val r = args[1].toInt().coerceIn(0, 255)
             val g = args[2].toInt().coerceIn(0, 255)
@@ -693,6 +688,24 @@ public class NationCommand :
         Message.print(player, "Players online in nation ${nation.name} [$numPlayersOnline]: ${ChatColor.WHITE}$playersOnline")
     }
 
+    private fun onlineTop(player: Player?) {
+        if (player == null) return
+
+        val ranked = Nodes.nations.values
+            .map { it to it.playersOnline.size }
+            .sortedByDescending { it.second }
+            .take(15)
+
+        Message.print(player, "${org.bukkit.ChatColor.BOLD}[Nodes] Nations online top:")
+        ranked.forEachIndexed { i, (nation, n) ->
+            Message.print(
+                player,
+                "${org.bukkit.ChatColor.GOLD}${i + 1}. ${org.bukkit.ChatColor.WHITE}${nation.name} " +
+                    "${org.bukkit.ChatColor.GRAY}- ${org.bukkit.ChatColor.GREEN}$n online",
+            )
+        }
+    }
+
     /**
      * @command /nation info [nation]
      * View nation's info
@@ -782,13 +795,11 @@ public class NationCommand :
             return
         }
 
-        // already teleporting
         if (resident.teleportThread !== null) {
             Message.error(player, "You are already trying to teleport")
             return
         }
 
-        // pay item cost to teleport
         if (Config.nationTownTeleportCost.size > 0) {
             val inventory = player.getInventory()
             for ((material, amount) in Config.nationTownTeleportCost) {
@@ -799,17 +810,14 @@ public class NationCommand :
                 }
             }
 
-            // subtract cost
             for ((material, amount) in Config.nationTownTeleportCost) {
                 val items = ItemStack(material, amount)
                 inventory.removeItem(items)
             }
         }
 
-        // location destination
         val destination = destinationTown.spawnpoint
 
-        // ticks before teleport timer runs
         val teleportTimerTicks: Long = Math.max(0, Config.townSpawnTime * 20).toLong()
 
         resident.isTeleportingToNationTown = true

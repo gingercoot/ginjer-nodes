@@ -14,10 +14,6 @@ val PROTECTED_BLOCKS: List<Material> = listOf(
     Material.TRAPPED_CHEST,
     Material.FURNACE,
 
-    // 1.12
-    // Material.BURNING_FURNACE,
-
-    // 1.16
-    Material.BARREL, // 1.16
+    Material.BARREL,
     Material.BLAST_FURNACE,
 )

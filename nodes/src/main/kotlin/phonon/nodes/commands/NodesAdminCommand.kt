@@ -49,8 +49,6 @@ import phonon.nodes.war.TreatyTermOccupation
 import phonon.nodes.war.WarTimer
 import kotlin.getOrElse
 import kotlin.math.roundToInt
-
-// list of all subcommands, used for onTabComplete
 private val SUBCOMMANDS: List<String> = listOf(
     "help",
     "reload",
@@ -74,7 +72,9 @@ private val SUBCOMMANDS: List<String> = listOf(
     "debug",
     "miningboost",
     "stats",
+    "rallycap",
     "announce",
+    "plot",
 )
 
 private val RELOAD_SUBCOMMANDS: List<String> = listOf(
@@ -84,7 +84,6 @@ private val RELOAD_SUBCOMMANDS: List<String> = listOf(
     "territory",
 )
 
-// war subcommands
 private val WAR_SUBCOMMANDS: List<String> = listOf(
     "enable",
     "skirmish",
@@ -93,7 +92,6 @@ private val WAR_SUBCOMMANDS: List<String> = listOf(
     "blacklist",
 )
 
-// port subcommands
 private val PORT_SUBCOMMANDS: List<String> = listOf(
     "create",
     "delete",
@@ -101,18 +99,15 @@ private val PORT_SUBCOMMANDS: List<String> = listOf(
     "removegroup",
 )
 
-// portgroup subcommands
 private val PORTGROUP_SUBCOMMANDS: List<String> = listOf(
     "create",
     "delete",
 )
 
-// resident/player subcommands
 private val RESIDENT_SUBCOMMANDS: List<String> = listOf(
     "towncooldown",
 )
 
-// town subcommands
 private val TOWN_SUBCOMMANDS: List<String> = listOf(
     "create",
     "delete",
@@ -142,7 +137,6 @@ private val TOWN_SUBCOMMANDS: List<String> = listOf(
     "defaulttownspawns",
 )
 
-// nation subcommands
 private val NATION_SUBCOMMANDS: List<String> = listOf(
     "create",
     "delete",
@@ -151,7 +145,6 @@ private val NATION_SUBCOMMANDS: List<String> = listOf(
     "capital",
 )
 
-// debug subcommands
 private val DEBUG_SUBCOMMANDS: List<String> = listOf(
     "resource",
     "chunk",
@@ -208,12 +201,10 @@ public class NodesAdminCommand :
                 }
                 if (args.size >= 5) {
                     val tier = args[4].toIntOrNull()
-                    // ===== B3 GOES HERE =====
                     if (tier == null || tier < 1 || tier > MiningBoost.MAX_TIER) {
                         Message.error(sender, "Tier must be 1–${MiningBoost.MAX_TIER}")
                         return
                     }
-                    // ===== then setPlayer =====
                     MiningBoost.setPlayer(
                         offline.uniqueId,
                         args[2],
@@ -253,12 +244,68 @@ public class NodesAdminCommand :
             else -> Message.error(sender, "Use: miningboost global|player|clear")
         }
     }
+    private fun adminPlot(sender: CommandSender, args: Array<String>) {
+        if (args.size < 2) {
+            Message.print(sender, "Usage: /nda plot list | /nda plot delete <name>")
+            return
+        }
+        when (args[1].lowercase()) {
+            "list" -> {
+                val all = phonon.nodes.plot.Plots.all()
+                if (all.isEmpty()) {
+                    Message.print(sender, "No plots")
+                    return
+                }
+                for (plot in all) {
+                    Message.print(
+                        sender,
+                        "${plot.name} town=${plot.townName} owner=${plot.ownerName}",
+                    )
+                }
+            }
+            "delete" -> {
+                if (args.size < 3) {
+                    Message.error(sender, "Usage: /nda plot delete <name>")
+                    return
+                }
+                if (phonon.nodes.plot.Plots.delete(args[2])) {
+                    Message.print(sender, "Deleted plot ${args[2]}")
+                } else {
+                    Message.error(sender, "Plot not found")
+                }
+            }
+            else -> Message.error(sender, "Usage: /nda plot list | delete <name>")
+        }
+    }
+    private fun adminRallyCap(sender: CommandSender, args: Array<String>) {
+        if (args.size < 3) {
+            Message.error(sender, "Usage: /nda rallycap <nation> <n|-1>")
+            return
+        }
+        val name = args[1]
+        val nation = Nodes.getNationFromName(name)
+            ?: run {
+                Message.error(sender, "Nation not found")
+                return
+            }
+        val n = args[2].toIntOrNull()
+            ?: run {
+                Message.error(sender, "Cap must be an integer (-1 = unlimited)")
+                return
+            }
+        if (n < -1) {
+            Message.error(sender, "Cap must be >= -1")
+            return
+        }
+        phonon.nodes.RallyCap.set(nation.name, n)
+        val shown = if (n < 0) "unlimited" else n.toString()
+        Message.print(sender, "${org.bukkit.ChatColor.GREEN}Rally cap for ${nation.name}: $shown")
+    }
     private fun adminStats(sender: CommandSender, args: Array<String>) {
         if (!sender.hasPermission("nodes.stats.admin") && !sender.isOp) {
             Message.error(sender, "No permission")
             return
         }
-        // /nda stats reset <player>
         if (args.size >= 3 && args[1].equals("reset", ignoreCase = true)) {
             val offline = org.bukkit.Bukkit.getOfflinePlayer(args[2])
             phonon.nodes.stats.PlayerStats.reset(offline.uniqueId)
@@ -269,14 +316,12 @@ public class NodesAdminCommand :
     }
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
-        // no args, print plugin info
         if (args.size == 0) {
             Message.print(sender, "${ChatColor.BOLD}Nodes ${Nodes.version}")
             printHelp(sender)
             return true
         }
 
-        // parse subcommand
         when (args[0].lowercase()) {
             "help" -> printHelp(sender)
             "reload" -> reload(sender, args)
@@ -300,6 +345,8 @@ public class NodesAdminCommand :
             "load" -> loadWorld(sender)
             "runincome" -> Nodes.runIncome()
             "playersonline" -> Nodes.refreshPlayersOnline()
+            "plot" -> adminPlot(sender, args)
+            "rallycap" -> adminRallyCap(sender, args)
             "debug" -> debugger(sender, args)
             else -> {
                 Message.error(sender, "Invalid command, use \"/nodesadmin help\"")
@@ -310,13 +357,9 @@ public class NodesAdminCommand :
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<String>): List<String> {
-        // match subcommand
         if (args.size == 1) {
             return filterByStart(SUBCOMMANDS, args[0])
-        }
-        // match each subcommand format
-        else if (args.size > 1) {
-            // handle specific subcommands
+        } else if (args.size > 1) {
             when (args[0].lowercase()) {
                 "reload" -> {
                     if (args.size == 2) {
@@ -330,7 +373,6 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin war enable/disable
                 "war" -> {
                     if (args.size == 2) {
                         return filterByStart(WAR_SUBCOMMANDS, args[1])
@@ -344,13 +386,11 @@ public class NodesAdminCommand :
                         when (args[1].lowercase()) {
                             "player" -> return filterPlayer(args[2])
                             "clear" -> return filterByStart(listOf("global", "player"), args[2])
-                            // global: duration free-text
                         }
                     }
                     if (args.size == 4) {
                         when (args[1].lowercase()) {
                             "player" -> {
-                                // duration free-text after name
                             }
                             "clear" -> {
                                 if (args[2].equals("player", ignoreCase = true)) {
@@ -361,15 +401,11 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin port [subcommand]
                 "port" -> {
                     if (args.size == 2) {
                         return filterByStart(PORT_SUBCOMMANDS, args[1])
-                    }
-                    // handle subcommand
-                    else if (args.size == 3) {
+                    } else if (args.size == 3) {
                         when (args[1].lowercase()) {
-                            // /nodesadmin port [subcommand] [port] ...
                             "delete",
                             "addgroup",
                             "removegroup",
@@ -377,9 +413,7 @@ public class NodesAdminCommand :
                                 return filterPort(args[2])
                             }
                         }
-                    }
-                    // return x,z for /nodesadmin port create [town]
-                    else if (args[1].lowercase() == "create") {
+                    } else if (args[1].lowercase() == "create") {
                         when (args.size) {
                             4 -> {
                                 return listOf(Bukkit.getPlayer(sender.name)?.x?.roundToInt().toString())
@@ -388,9 +422,7 @@ public class NodesAdminCommand :
                                 return listOf(Bukkit.getPlayer(sender.name)?.z?.roundToInt().toString())
                             }
                         }
-                    }
-                    // return groups for /nodes port addgroup/removegroup
-                    else if (args.size == 4) {
+                    } else if (args.size == 4) {
                         when (args[1].lowercase()) {
                             "addgroup",
                             "removegroup",
@@ -401,12 +433,10 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin portgroup [subcommand
                 "portgroup" -> {
                     if (args.size == 2) {
                         return filterByStart(PORTGROUP_SUBCOMMANDS, args[1])
                     }
-                    // handle subcommands
                     when (args[1].lowercase()) {
                         "delete" -> {
                             return filterPortGroup(args[2])
@@ -414,13 +444,11 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin resident [subcommand]
                 "resident" -> {
                     if (args.size == 2) {
                         return filterByStart(RESIDENT_SUBCOMMANDS, args[1])
                     } else if (args.size > 2) {
                         when (args[1].lowercase()) {
-                            // /nodesadmin resident [subcommand] [player]
                             "towncooldown" -> {
                                 if (args.size == 3) {
                                     return filterResident(args[2])
@@ -430,15 +458,11 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin town [subcommand]
                 "town" -> {
                     if (args.size == 2) {
                         return filterByStart(TOWN_SUBCOMMANDS, args[1])
-                    }
-                    // handle subcommand
-                    else if (args.size > 2) {
+                    } else if (args.size > 2) {
                         when (args[1].lowercase()) {
-                            // /nodesadmin town [subcommand] [town] ...
                             "delete",
                             "addterritory",
                             "removeterritory",
@@ -460,7 +484,6 @@ public class NodesAdminCommand :
                                 }
                             }
 
-                            // /nodesadmin town subcommand [town] [name1] [name2] ...
                             "addplayer",
                             "removeplayer",
                             -> {
@@ -471,7 +494,6 @@ public class NodesAdminCommand :
                                 }
                             }
 
-                            // /nodesadmin town subcommand [town] [resident]
                             "leader" -> {
                                 if (args.size == 3) {
                                     return filterTown(args[2])
@@ -483,7 +505,6 @@ public class NodesAdminCommand :
                                 }
                             }
 
-                            // /nodesadmin town subcommand [town] [resident1] [resident2] ...
                             "addofficer",
                             "removeofficer",
                             -> {
@@ -497,14 +518,12 @@ public class NodesAdminCommand :
                                 }
                             }
 
-                            // outpost
                             "addoutpost" -> {
                                 if (args.size == 3) {
                                     return filterTown(args[2])
                                 }
                             }
 
-                            // /nodesadmin town subcommand [town] [outpost] ...
                             "removeoutpost" -> {
                                 if (args.size == 3) {
                                     return filterTown(args[2])
@@ -519,22 +538,17 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin town [subcommand]
                 "nation" -> {
                     if (args.size == 2) {
                         return filterByStart(NATION_SUBCOMMANDS, args[1])
-                    }
-                    // handle subcommand
-                    else if (args.size > 2) {
+                    } else if (args.size > 2) {
                         when (args[1].lowercase()) {
-                            // /nodesadmin nation [subcommand] [nation] ...
                             "delete" -> {
                                 if (args.size == 3) {
                                     return filterNation(args[2])
                                 }
                             }
 
-                            // /nodesadmin nation subcommand [nation] [town1] [town2] ...
                             "addtown",
                             "removetown",
                             -> {
@@ -545,7 +559,6 @@ public class NodesAdminCommand :
                                 }
                             }
 
-                            // /nodesadmin nation subcommand [nation] [town1]
                             "capital" -> {
                                 if (args.size == 3) {
                                     return filterNation(args[2])
@@ -560,7 +573,6 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // /nodesadmin subcommand [town/nation] [town/nation]
                 "enemy",
                 "peace",
                 "ally",
@@ -582,14 +594,12 @@ public class NodesAdminCommand :
                         return filterTownOrNation(args[2])
                     }
                 }
+                "plot" -> filterByStart(listOf("list", "delete"), args[1])"plot" -> filterByStart(listOf("list", "delete"), args[1])
 
-                // /nodesadmin debug [subcommand]
                 "debug" -> {
                     if (args.size == 2) {
                         return filterByStart(DEBUG_SUBCOMMANDS, args[1])
-                    }
-                    // handle subcommand
-                    else if (args.size > 2) {
+                    } else if (args.size > 2) {
                         when (args[1].lowercase()) {
                             "resident" -> {
                                 if (args.size == 3) {
@@ -618,7 +628,7 @@ public class NodesAdminCommand :
     }
 
     private fun printHelp(sender: CommandSender) {
-        Message.print(sender, "[Nodes] Admin commands:")
+        Message.print(sender, "${ChatColor.BOLD}[Nodes] Admin commands:")
         Message.print(sender, "/nodesadmin reload${ChatColor.WHITE}: Reloads modules of plugin")
         Message.print(sender, "/nodesadmin war${ChatColor.WHITE}: Enable/disable war")
         Message.print(sender, "/nodesadmin town${ChatColor.WHITE}: Manage towns (see \"/nodesadmin town help\")")
@@ -638,6 +648,8 @@ public class NodesAdminCommand :
         Message.print(sender, "/nodesadmin miningboost${ChatColor.WHITE}: Mining rate/amount boosts")
         Message.print(sender, "/nodesadmin stats reset <player>${ChatColor.WHITE}: Reset K/D stats")
         Message.print(sender, "/nodesadmin announce <message>${ChatColor.WHITE}: Announce for all players")
+        Message.print(sender, "/nodesadmin plot list|delete <name>${ChatColor.WHITE}: Manage plots")
+        Message.print(sender, "/nodesadmin rallycap <nation> <n|-1>${ChatColor.WHITE}: Manage rallycaps")
         return
     }
 
@@ -646,7 +658,6 @@ public class NodesAdminCommand :
      * Reload components of Nodes engine
      */
     private fun reload(sender: CommandSender, args: Array<String>) {
-        // print general war state
         if (args.size < 2) {
             Message.print(sender, "Reload possibilities: \"/nodesadmin reload [config|managers|resources|territory]\"")
             return
@@ -670,7 +681,6 @@ public class NodesAdminCommand :
                 Message.error(sender, "[Nodes] failed to reload resources and territories")
             }
         } else if (subcommand == "territory") {
-            // parse territory ids
             if (args.size < 3) {
                 Message.print(sender, "Usage: \"/nodesadmin reload territory *\"${ChatColor.WHITE}: reloads ALL territories")
                 Message.print(sender, "Usage: \"/nodesadmin reload territory id1 id2 id3 ...\"${ChatColor.WHITE}: reloads specific ids")
@@ -679,7 +689,7 @@ public class NodesAdminCommand :
 
             val terrIds: List<TerritoryId>? = if (args[2] == "*") { // reload ALL territories (don't specify ids)
                 null
-            } else { // load specific ids: parse from chat input
+            } else {
                 val ids = HashSet<TerritoryId>()
 
                 // validate id exists in territories (don't allow reloading NEW territories,
@@ -725,15 +735,11 @@ public class NodesAdminCommand :
      * Enables/disables war
      */
     private fun war(sender: CommandSender, args: Array<String>) {
-        // print general war state
         if (args.size < 2) {
             Nodes.war.printInfo(sender, true)
             Message.print(sender, "Usage: /nda war enable [duration] | skirmish [duration] | disable")
-        }
-        // war subcommands
-        else {
+        } else {
             val function = args[1].lowercase()
-            // full war: allow annex, can attack any territory
             when (function) {
                 "enable" -> {
                     val durationMs = if (args.size >= 3) {
@@ -782,8 +788,7 @@ public class NodesAdminCommand :
                     }
 
                     Nodes.enableWar(false, true, Config.allowDestructionDuringSkirmish)
-                    // War KDR only for full war by default — skip startWarSession here
-                    // phonon.nodes.stats.WarStats.startWarSession(fullWar = false)
+                    // War KDR is only tracked for full war, so no war session here
 
                     if (durationMs != null) {
                         phonon.nodes.war.WarTimer.scheduleDisable(durationMs, "Skirmish time expired")
@@ -811,7 +816,6 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // prints config whitelist
                 "whitelist" -> {
                     if (Config.warUseWhitelist) {
                         Message.print(sender, "[War] Town attack whitelist:")
@@ -825,7 +829,6 @@ public class NodesAdminCommand :
                     }
                 }
 
-                // print config blacklist
                 "blacklist" -> {
                     if (Config.warUseBlacklist) {
                         Message.print(sender, "[War] Town attack blacklist:")
@@ -852,7 +855,6 @@ public class NodesAdminCommand :
     // - edit port properties
     // =============================================================
 
-    // route command to further subcommands
     private fun managePort(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
             printPortHelp(sender)
@@ -887,7 +889,6 @@ public class NodesAdminCommand :
 
         val portName = args[2].lowercase()
 
-        // parse coordinates
         val x = args[3].toIntOrNull()
         val z = args[4].toIntOrNull()
         if (x === null || z === null) {
@@ -895,7 +896,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // create port with default values
         Nodes.createPort(
             portName,
             x,
@@ -929,7 +929,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // delete the port
         Nodes.destroyPort(port)
 
         Message.print(sender, "Port \"${portName}\" has been deleted")
@@ -952,19 +951,16 @@ public class NodesAdminCommand :
         val groupName = args[3].lowercase()
         val group = Nodes.getPortGroupFromName(groupName)
 
-        // check port exists
         if (port === null) {
             Message.error(sender, "Port \"${portName}\" does not exist")
             return
         }
 
-        // check group exists
         if (group === null) {
             Message.error(sender, "Group \"${groupName}\" does not exist")
             return
         }
 
-        // check port isnt already in group
         if (port.groups.contains(group)) {
             Message.error(sender, "Port is already part of ths group")
             return
@@ -992,19 +988,16 @@ public class NodesAdminCommand :
         val groupName = args[3].lowercase()
         val group = Nodes.getPortGroupFromName(groupName)
 
-        // check port exists
         if (port === null) {
             Message.error(sender, "Port \"${portName}\" does not exist")
             return
         }
 
-        // check group exists
         if (group === null) {
             Message.error(sender, "Group \"${groupName}\" does not exist")
             return
         }
 
-        // check port is in group
         if (!port.groups.contains(group)) {
             Message.error(sender, "Port \"$portName\" is not part of \"$groupName\" group")
             return
@@ -1020,7 +1013,6 @@ public class NodesAdminCommand :
     // - create/delete port groups
     // =============================================================
 
-    // route command to further subcommands
     private fun managePortGroup(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
             printPortGroupHelp(sender)
@@ -1051,7 +1043,6 @@ public class NodesAdminCommand :
 
         val portGroupName = args[2].lowercase()
 
-        // create port group
         Nodes.createPortGroup(
             portGroupName,
         ).getOrElse({ err ->
@@ -1081,7 +1072,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // delete the port group
         Nodes.destroyPortGroup(portGroup)
 
         Message.print(sender, "${ChatColor.GREEN}Deleted group \"${portGroupName}\"")
@@ -1092,12 +1082,10 @@ public class NodesAdminCommand :
     // - change town create cooldown
     // =============================================================
 
-    // route command to further subcommands
     private fun manageResident(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
             printTownHelp(sender)
         } else {
-            // route subcommand function
             when (args[1].lowercase()) {
                 "help" -> printResidentHelp(sender)
                 "towncooldown" -> setResidentTownCooldown(sender, args)
@@ -1139,12 +1127,10 @@ public class NodesAdminCommand :
     // - modify town territories, claims bonus, ...
     // =============================================================
 
-    // route command to further subcommands
     private fun manageTown(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
             printTownHelp(sender)
         } else {
-            // route subcommand function
             when (args[1].lowercase()) {
                 "create" -> createTown(sender, args)
                 "delete" -> deleteTown(sender, args)
@@ -1216,14 +1202,12 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town name
         if (!stringInputIsValid(args[2])) {
             Message.error(sender, "Invalid town name")
             return
         }
         val name = sanitizeString(args[2])
 
-        // map ids to territories
         val territories: MutableList<Territory> = mutableListOf()
         for (i in 3 until args.size) {
             val id = TerritoryId(args[i].toInt())
@@ -1236,13 +1220,11 @@ public class NodesAdminCommand :
             }
         }
 
-        // first territory is new town home
         val town = Nodes.createTown(name, territories[0], null).getOrElse({ err ->
             Message.error(sender, "Failed to create town: ${err.message}")
             return
         })
 
-        // add the other territories
         for (i in 1 until territories.size) {
             Nodes.addTerritoryToTown(town, territories[i])
         }
@@ -1288,7 +1270,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get residents from player names, error out if any do not exist
         val residents: MutableList<Resident> = mutableListOf()
         for (i in 3 until args.size) {
             val res = Nodes.getResidentFromName(args[i])
@@ -1299,7 +1280,6 @@ public class NodesAdminCommand :
             residents.add(res)
         }
 
-        // add residents to town
         for (r in residents) {
             Nodes.addResidentToTown(town, r)
             Message.print(sender, "Added \"${r.name}\" to town \"${town.name}\"")
@@ -1324,7 +1304,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get residents from player names, error out if any do not exist
         val residents: MutableList<Resident> = mutableListOf()
         for (i in 3 until args.size) {
             val res = Nodes.getResidentFromName(args[i])
@@ -1335,7 +1314,6 @@ public class NodesAdminCommand :
             residents.add(res)
         }
 
-        // add residents to town
         for (r in residents) {
             Nodes.removeResidentFromTown(town, r)
             Message.print(sender, "Removed \"${r.name}\" from town \"${town.name}\"")
@@ -1361,7 +1339,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // map ids to territories
         val territories: MutableList<Territory> = mutableListOf()
         for (i in 3 until args.size) {
             val id = TerritoryId(args[i].toInt())
@@ -1374,7 +1351,6 @@ public class NodesAdminCommand :
             }
         }
 
-        // add territories
         for (terr in territories) {
             Nodes.addTerritoryToTown(town, terr)
         }
@@ -1400,7 +1376,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // map ids to territories
         val territories: MutableList<Territory> = mutableListOf()
         for (i in 3 until args.size) {
             val id = TerritoryId(args[i].toInt())
@@ -1416,7 +1391,6 @@ public class NodesAdminCommand :
             }
         }
 
-        // remove territories
         for (terr in territories) {
             Nodes.unclaimTerritory(town, terr)
         }
@@ -1442,7 +1416,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // map ids to territories
         val territories: MutableList<Territory> = mutableListOf()
         for (i in 3 until args.size) {
             val id = TerritoryId(args[i].toInt())
@@ -1455,7 +1428,6 @@ public class NodesAdminCommand :
             }
         }
 
-        // add territories
         for (terr in territories) {
             Nodes.captureTerritory(town, terr)
         }
@@ -1474,7 +1446,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // map ids to territories
         val territories: MutableList<Territory> = mutableListOf()
         for (i in 2 until args.size) {
             val id = TerritoryId(args[i].toInt())
@@ -1487,7 +1458,6 @@ public class NodesAdminCommand :
             }
         }
 
-        // add territories
         for (terr in territories) {
             Nodes.releaseTerritory(terr)
         }
@@ -1505,7 +1475,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town == null) {
@@ -1513,15 +1482,11 @@ public class NodesAdminCommand :
             return
         }
 
-        // print bonus claims for town
         if (args.size == 3) {
             Message.print(sender, "Town \"${townName}\" bonus claims: ${town.claimsBonus}")
-        }
-        // set town bonus claims
-        else if (args.size > 3) {
+        } else if (args.size > 3) {
             val bonus = args[3].toInt()
 
-            // set claims
             Nodes.setClaimsBonus(town, bonus)
 
             Message.print(sender, "Town \"${townName}\" bonus claims set to $bonus")
@@ -1538,7 +1503,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town == null) {
@@ -1546,15 +1510,11 @@ public class NodesAdminCommand :
             return
         }
 
-        // print bonus claims for town
         if (args.size == 3) {
             Message.print(sender, "Town \"${townName}\" claims penalty: ${town.claimsPenalty}")
-        }
-        // set town bonus claims
-        else if (args.size > 3) {
+        } else if (args.size > 3) {
             val num = args[3].toInt()
 
-            // set claims
             Nodes.setClaimsPenalty(town, num)
 
             Message.print(sender, "Town \"${townName}\" claims penalty set to $num")
@@ -1563,7 +1523,7 @@ public class NodesAdminCommand :
 
     /**
      * @command /nodesadmin town claimsannex [town] [#]
-     * Set town bonus claims.
+     * Set town annexed claims penalty.
      */
     private fun setClaimsAnnexed(sender: CommandSender, args: Array<String>) {
         if (args.size < 3) {
@@ -1571,7 +1531,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town == null) {
@@ -1579,15 +1538,11 @@ public class NodesAdminCommand :
             return
         }
 
-        // print bonus claims for town
         if (args.size == 3) {
             Message.print(sender, "Town \"${townName}\" annexed claims penalty: ${town.claimsAnnexed}")
-        }
-        // set town bonus claims
-        else if (args.size > 3) {
+        } else if (args.size > 3) {
             val value = args[3].toInt()
 
-            // set claims
             Nodes.setClaimsAnnexed(town, value)
 
             Message.print(sender, "Town \"${townName}\" annexed claims penalty set to $value")
@@ -1611,7 +1566,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get residents from player names, error out if any do not exist
         val residents: MutableList<Resident> = mutableListOf()
         for (i in 3 until args.size) {
             val res = Nodes.getResidentFromName(args[i])
@@ -1626,7 +1580,6 @@ public class NodesAdminCommand :
             residents.add(res)
         }
 
-        // make residents officers
         for (r in residents) {
             Nodes.townAddOfficer(town, r)
             Message.print(sender, "Made \"${r.name}\" officer of \"${town.name}\"")
@@ -1650,7 +1603,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get residents from player names, error out if any do not exist
         val residents: MutableList<Resident> = mutableListOf()
         for (i in 3 until args.size) {
             val res = Nodes.getResidentFromName(args[i])
@@ -1665,7 +1617,6 @@ public class NodesAdminCommand :
             residents.add(res)
         }
 
-        // make residents officers
         for (r in residents) {
             Nodes.townRemoveOfficer(town, r)
             Message.print(sender, "Removed \"${r.name}\" as officer of \"${town.name}\"")
@@ -1735,7 +1686,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town == null) {
@@ -1743,7 +1693,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // set town open state
         Nodes.setTownOpen(town, !town.isOpen)
 
         Message.print(sender, "Town \"${townName}\" isOpen set to ${town.isOpen}")
@@ -1765,7 +1714,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town == null) {
@@ -1773,7 +1721,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // open town inventory
         player.openInventory(Nodes.getTownIncomeInventory(town))
     }
 
@@ -1793,7 +1740,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get towns
         val townName = args[2]
         val towns = Nodes.matchTowns(townName)
         if (towns.size == 0) {
@@ -1801,7 +1747,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get item in player hand
         val item = player.inventory.itemInMainHand
         if (item === null || item.type == Material.AIR) {
             Message.error(sender, "You must be holding an item")
@@ -1831,7 +1776,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get towns
         val townName = args[2]
         val towns = Nodes.matchTowns(townName)
         if (towns.size == 0) {
@@ -1839,10 +1783,8 @@ public class NodesAdminCommand :
             return
         }
 
-        // get material if specified, otherwise treat as null and remove all
         val material = if (args.size >= 4) Material.matchMaterial(args[3]) else null
 
-        // TODO: perhaps abstract this into a Nodes api func
         for (town in towns) {
             Nodes.townIncomeRemove(town, material)
             if (material !== null) {
@@ -1869,7 +1811,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town == null) {
@@ -1902,7 +1843,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get town
         val townName = args[2]
         val town = Nodes.towns.get(townName)
         if (town === null) {
@@ -1930,7 +1870,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get new home territory
         val id = TerritoryId(args[3].toInt())
         val terr = Nodes.territories[id]
         if (terr == null) {
@@ -1938,7 +1877,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // set town home territory
         if (town !== terr.town) {
             Message.error(sender, "Invalid territory id=$id: does not belong to town")
             return
@@ -1970,7 +1908,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get new home territory
         val cooldown: Long = Math.max(0L, args[3].toLong())
 
         Nodes.setTownHomeMoveCooldown(town, cooldown)
@@ -1994,14 +1931,12 @@ public class NodesAdminCommand :
             return
         }
 
-        // get outpost name
         val name = args[3]
         if (town.outposts.contains(name)) {
             Message.error(sender, "Town already has outpost named: \"${name}\"")
             return
         }
 
-        // get outpost territory
         val id = TerritoryId(args[4].toInt())
         val terr = Nodes.territories.get(id)
         if (terr == null) {
@@ -2009,7 +1944,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // set town home territory
         if (town !== terr.town) {
             Message.error(sender, "Invalid territory id=$id: does not belong to town")
             return
@@ -2040,7 +1974,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get outpost name
         val name = args[3]
         if (!town.outposts.contains(name)) {
             Message.error(sender, "Town does not have outpost named: \"${name}\"")
@@ -2055,8 +1988,6 @@ public class NodesAdminCommand :
         }
     }
 
-    // TODO: town perm toggles
-
     /**
      * @command /nodesadmin town defaulttownspawns [town]
      * Reset town spawns to default position (highest block before air)
@@ -2067,7 +1998,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get towns
         val townName = args[2]
         val towns = Nodes.matchTowns(townName)
         if (towns.size == 0) {
@@ -2087,7 +2017,6 @@ public class NodesAdminCommand :
             }
         }
 
-        // TODO: move this out
         Nodes.needsSave = true
     }
 
@@ -2097,12 +2026,10 @@ public class NodesAdminCommand :
     // - toggle nation properties, alliances, towns, ...
     // =============================================================
 
-    // route command to further subcommands
     private fun manageNation(sender: CommandSender, args: Array<String>) {
         if (args.size < 2) {
             printNationHelp(sender)
         } else {
-            // route subcommand function
             when (args[1].lowercase()) {
                 "create" -> createNation(sender, args)
                 "delete" -> deleteNation(sender, args)
@@ -2138,14 +2065,12 @@ public class NodesAdminCommand :
             return
         }
 
-        // get nation name
         if (!stringInputIsValid(args[2])) {
             Message.error(sender, "Invalid nation name")
             return
         }
         val nationName = sanitizeString(args[2])
 
-        // get towns
         val towns: MutableList<Town> = mutableListOf()
         for (i in 3 until args.size) {
             val townName = args[i]
@@ -2158,13 +2083,11 @@ public class NodesAdminCommand :
             }
         }
 
-        // create new nation from town
         val nation = Nodes.createNation(nationName, towns[0], towns[0].leader).getOrElse({ err ->
             Message.error(sender, "Failed to create nation: ${err.message}")
             return
         })
 
-        // add other towns
         for (i in 1 until towns.size) {
             Nodes.addTownToNation(nation, towns[i])
         }
@@ -2210,7 +2133,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get residents from player names, error out if any do not exist
         val towns: MutableList<Town> = mutableListOf()
         for (i in 3 until args.size) {
             val town = Nodes.towns.get(args[i])
@@ -2221,7 +2143,6 @@ public class NodesAdminCommand :
             towns.add(town)
         }
 
-        // add towns
         for (town in towns) {
             Nodes.addTownToNation(nation, town)
             Message.print(sender, "Added town \"${town.name}\" to nation \"${nation.name}\"")
@@ -2246,7 +2167,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get towns, error out if any do not exist or do not belong to nation
         val towns: MutableList<Town> = mutableListOf()
         for (i in 3 until args.size) {
             val town = Nodes.towns.get(args[i])
@@ -2257,7 +2177,6 @@ public class NodesAdminCommand :
             towns.add(town)
         }
 
-        // remove towns
         for (town in towns) {
             Nodes.removeTownFromNation(nation, town)
             Message.print(sender, "Removed town \"${town.name}\" from nation \"${nation.name}\"")
@@ -2299,7 +2218,6 @@ public class NodesAdminCommand :
 
         Nodes.setNationCapital(nation, town)
 
-        // broadcast message
         Message.print(sender, "${town.name} is now the capital of ${nation.name}")
     }
 
@@ -2322,11 +2240,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2367,11 +2283,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2411,11 +2325,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2455,11 +2367,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2499,11 +2409,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2543,11 +2451,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2591,11 +2497,9 @@ public class NodesAdminCommand :
         val name1 = args[1]
         val name2 = args[2]
 
-        // try getting nations first
         val nation1 = Nodes.nations.get(name1)
         val nation2 = Nodes.nations.get(name2)
 
-        // if either null, get towns, else use nation capital
         val town1 = if (nation1 !== null) {
             nation1.capital
         } else {
@@ -2617,14 +2521,12 @@ public class NodesAdminCommand :
             return
         }
 
-        // get treaty
         val treaty = Treaty.get(town1, town2)
         if (treaty === null) {
             Message.error(sender, "No treaty exists between ${town1.name} and ${town2.name}")
             return
         }
 
-        // get town side the term belongs to
         var provider: Town? = null
         var receiver: Town? = null
         if (args[5] == "0") {
@@ -2640,9 +2542,7 @@ public class NodesAdminCommand :
         provider = provider as Town
         receiver = receiver as Town
 
-        // get add/remove term
         if (args[3] == "add") {
-            // match term type
             when (args[4]) {
                 "occupy" -> {
                     if (args.size < 7) {
@@ -2650,7 +2550,6 @@ public class NodesAdminCommand :
                         return
                     }
 
-                    // get territory
                     val territory = Nodes.getTerritoryFromId(TerritoryId(args[6].toInt()))
                     if (territory === null) {
                         Message.error(sender, "Invalid territory id")
@@ -2679,21 +2578,15 @@ public class NodesAdminCommand :
                 }
             }
         } else if (args[3] == "remove") {
-            // TODO
         } else {
             Message.error(sender, "arg[3] must be \"add\" or \"remove\"")
         }
     }
 
     // =============================================================
-    // World save/load commands:
-    // - Force world save/load
-    // TODO: - better print out
-    //       - add backupWorld command to force backup
-    //       - allow loading from backups folder?
+    // World save/load commands
     // =============================================================
 
-    // force save the world (using async save)
     private fun saveWorld(sender: CommandSender, args: Array<String>) {
         if (args.size > 1 && args[1] == "sync") {
             Message.print(sender, "[Nodes] Saving world (sync)")
@@ -2704,8 +2597,6 @@ public class NodesAdminCommand :
         }
     }
 
-    // force reload the world
-    // TODO: add optional path name for world data to load?
     private fun loadWorld(sender: CommandSender) {
         Message.print(sender, "[Nodes] Loading world")
         Nodes.loadWorld()
@@ -2741,7 +2632,6 @@ public class NodesAdminCommand :
             return
         }
 
-        // get object instance
         val instance: Any? = when (args[1].lowercase()) {
             "resource" -> Nodes.resourceNodes.get(args[2])
             "chunk" -> Nodes.territoryChunks.get(Coord.fromString(args[2]))
@@ -2798,82 +2688,4 @@ public class NodesAdminCommand :
         Message.print(sender, "Used to print debug info into system console from object data fields.")
         Message.print(sender, "General usage is \"/nodesadmin debug [type] [name/id] [field]\"")
     }
-
-    // =============================================================
-    /* test function for ore sampler, uncomment if needed
-    private fun testOreSampler() {
-        val ore1 = OreDeposit(Material.DIAMOND, 0.1, 1, 1)
-        val ore2 = OreDeposit(Material.EMERALD, 0.1, 1, 1)
-        val ore3 = OreDeposit(Material.GOLD_ORE, 0.3, 1, 1)
-        val ore4 = OreDeposit(Material.IRON_ORE, 0.3, 1, 1)
-        println(ore1)
-        println(ore2)
-        println(ore3)
-        println(ore4)
-
-        // create ore sampler from ores
-        val arrOre: ArrayList<OreDeposit> = arrayListOf(ore1, ore2, ore3, ore4)
-        val oreSampler = OreSampler(arrOre)
-
-        // try sampling
-        val COUNT = 10000
-
-        println("Running sampleAll: ${COUNT} counts")
-        val allDrops: EnumMap<Material, Int> = EnumMap<Material, Int>(Material::class.java)
-        val timeSampleAll = measureTimeMillis {
-            for ( i in 0 until COUNT ) {
-                val drops = oreSampler.sampleAll(128)
-                drops.forEach { itemStack ->
-                    val mat = itemStack.getType()
-                    val amount = itemStack.getAmount()
-                    allDrops.get(mat)?.let { currentAmount ->
-                        allDrops.put(mat, currentAmount + amount)
-                    } ?: run {
-                        allDrops.put(mat, amount)
-                    }
-                }
-            }
-        }
-        println(allDrops)
-        println("Time sampleAll: ${timeSampleAll}ms")
-
-        println("================================")
-        println("Test at different heights")
-        val ore_y_1 = OreDeposit(Material.DIAMOND, 0.6, 1, 1, 0, 255)
-        val ore_y_2 = OreDeposit(Material.EMERALD, 0.6, 1, 1, 50, 100)
-        val ore_y_3 = OreDeposit(Material.GOLD_ORE, 0.6, 1, 1, 51, 51)
-        val ore_y_4 = OreDeposit(Material.IRON_ORE, 0.6, 1, 1, 70, 255)
-        println(ore_y_1)
-        println(ore_y_2)
-        println(ore_y_3)
-        println(ore_y_4)
-
-        // create ore sampler from ores
-        val arrOre2: ArrayList<OreDeposit> = arrayListOf(ore_y_1, ore_y_2, ore_y_3, ore_y_4)
-        val oreSamplerHeight = OreSampler(arrOre2)
-
-        // test samples at different y levels
-        val yToTest = arrayOf(25, 50, 51, 69, 80, 150)
-        yToTest.forEach { y ->
-            println("SAMPLING AT y=${y}")
-            val currentDrops: EnumMap<Material, Int> = EnumMap<Material, Int>(Material::class.java)
-            val timeSample = measureTimeMillis {
-                for ( i in 0 until COUNT ) {
-                    val drops = oreSamplerHeight.sample(y)
-                    drops.forEach { itemStack ->
-                        val mat = itemStack.getType()
-                        val amount = itemStack.getAmount()
-                        currentDrops.get(mat)?.let { currentAmount ->
-                            currentDrops.put(mat, currentAmount + amount)
-                        } ?: run {
-                            currentDrops.put(mat, amount)
-                        }
-                    }
-                }
-            }
-            println(currentDrops)
-            println("Time sampleAll: ${timeSample}ms")
-        }
-    }
-     */
 }

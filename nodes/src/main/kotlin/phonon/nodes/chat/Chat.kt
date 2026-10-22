@@ -35,18 +35,16 @@ public object Chat {
     var colorPlayerNationLeader = "${ChatColor.GOLD}${ChatColor.BOLD}"
 
     public fun process(event: AsyncPlayerChatEvent) {
-        // FIRST MOST IMPORTANT: APPLY GREENTEXT
         val msg = event.getMessage()
         if (msg.get(0) == '>') {
             event.setMessage("${colorGreen}$msg")
         }
 
-        // get player chat mode
         val player = event.getPlayer()
         val fetchResident = Nodes.getResident(player)
         val resident: Resident = if (fetchResident != null) {
             fetchResident
-        } else { // print normal message...
+        } else {
             return
         }
 
@@ -54,7 +52,6 @@ public object Chat {
 
         when (chatMode) {
             ChatMode.GLOBAL -> {
-                // remove players who muted global
                 val recipients = event.getRecipients()
                 for (p in Chat.playersMuteGlobal) {
                     recipients.remove(p)
@@ -97,12 +94,10 @@ public object Chat {
         }
     }
 
-    // unmute global chat for player
     public fun enableGlobalChat(player: Player) {
         Chat.playersMuteGlobal.remove(player)
     }
 
-    // mute global chat for player
     public fun disableGlobalChat(player: Player) {
         Chat.playersMuteGlobal.add(player)
     }
@@ -116,12 +111,11 @@ public object Chat {
         val town = resident.town
         val nation = resident.nation
 
-        // get player name color
         val color = if (resident.player()?.isOp() == true) {
             colorPlayerOp
         } else if (town == null) {
             colorPlayerTownless
-        } else { // town != null
+        } else {
             if (resident === nation?.capital?.leader) {
                 colorPlayerNationLeader
             } else if (resident.uuid == town.leader?.uuid) {
@@ -145,10 +139,8 @@ public object Chat {
     }
 
     public fun formatMsgGlobal(resident: Resident): String {
-        // format player name
         val formattedResidentName = formatResidentName(resident)
 
-        // format town, nation
         val formattedResidentAllegience = if (resident.town != null && resident.nation != null) {
             "[${colorNation}${resident.nation?.name}$colorDefault|${colorTown}${resident.town?.name}$colorDefault] "
         } else if (resident.town != null) {
@@ -161,21 +153,18 @@ public object Chat {
     }
 
     public fun formatMsgTown(resident: Resident): String {
-        // format player name
         val formattedResidentName = formatResidentName(resident)
 
         return "$colorTown[Town] ${formattedResidentName}$colorTown: %2\$s"
     }
 
     public fun formatMsgNation(resident: Resident): String {
-        // format player name
         val formattedResidentName = formatResidentName(resident)
 
         return "$colorNation[Nation] ${formattedResidentName}$colorNation: %2\$s"
     }
 
     public fun formatMsgAlly(resident: Resident): String {
-        // format player name
         val formattedResidentName = formatResidentName(resident)
 
         return "$colorAlly[Ally] ${formattedResidentName}$colorAlly: %2\$s"

@@ -131,12 +131,10 @@ object MiningTowers {
                 player,
                 "${ChatColor.RED}Mining tower on cooldown: ${formatDuration(leftSec)} left",
             )
-            // restore furnace if broken
             Bukkit.getScheduler().runTask(Nodes.plugin!!, Runnable { tower.ensureFurnace() })
             return true
         }
 
-        // give rewards
         for (r in tower.rewards) {
             val stack = ItemStack(r.material, r.amount)
             val leftover = player.inventory.addItem(stack)
@@ -153,7 +151,6 @@ object MiningTowers {
             "${ChatColor.GREEN}Mining tower \"${tower.id}\": loot received. Cooldown ${formatDuration(tower.cooldownSeconds)}",
         )
 
-        // cancel break + restore next tick
         Bukkit.getScheduler().runTask(Nodes.plugin!!, Runnable { tower.ensureFurnace() })
         return true
     }

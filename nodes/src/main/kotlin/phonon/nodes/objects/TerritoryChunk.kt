@@ -16,7 +16,6 @@ data class TerritoryChunk(
     val coord: Coord,
     val territory: Territory,
 
-    // flags for war
-    var attacker: Town? = null, // town currently attacking chunk
-    var occupier: Town? = null, // town occupying chunk
+    var attacker: Town? = null,
+    var occupier: Town? = null,
 )

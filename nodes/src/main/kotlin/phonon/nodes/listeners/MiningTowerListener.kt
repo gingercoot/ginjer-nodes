@@ -16,7 +16,6 @@ import phonon.nodes.mining.MiningTowers
  */
 class MiningTowerListener : Listener {
 
-    /** Allow starting to mine the furnace on protected land. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     fun onLeftClick(event: PlayerInteractEvent) {
         if (event.action != Action.LEFT_CLICK_BLOCK) return
@@ -27,7 +26,6 @@ class MiningTowerListener : Listener {
         event.isCancelled = false
     }
 
-    /** Allow block damage (cracking) on towers. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     fun onDamage(event: BlockDamageEvent) {
         if (!MiningTowers.isTowerBlock(event.block)) return

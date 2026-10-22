@@ -18,11 +18,7 @@ import phonon.nodes.Config
 import phonon.nodes.Nodes
 import phonon.nodes.PlayerScoreboardManager
 
-/**
- * Get armor stand custom name as VIEWED by input player
- */
 public fun townNametagViewedByPlayer(town: Town, viewer: Player): String {
-    // get input player relation to this.player
     val otherTown = Nodes.getResident(viewer)?.town
     if (otherTown !== null) {
         if (town === otherTown) {
@@ -43,7 +39,6 @@ public object Nametag {
 
     private var task: BukkitTask? = null
 
-    // lock for pipelined nametag update
     private var updateLock: Boolean = false
 
     /**
@@ -57,19 +52,9 @@ public object Nametag {
             return
         }
 
-        // scheduler for refreshing nametag text
         val task = object : Runnable {
             public override fun run() {
-                // schedule pipelined update
                 Nametag.pipelinedUpdateAllText()
-
-                // synchronous update
-                // schedule main thread to run income tick
-                // Bukkit.getScheduler().runTask(plugin, object: Runnable {
-                //     override fun run() {
-                //         Nametag.updateAllText() // synchronous
-                //     }
-                // })
             }
         }
 
@@ -86,37 +71,21 @@ public object Nametag {
         this.task = null
     }
 
-    /**
-     * create new nametag for player
-     * KEPT ONLY FOR 1.12 API COMPATIBILITY
-     */
+    /** No-op, kept for API compatibility. */
     public fun create(player: Player): Nametag? = null
 
-    /**
-     * destroy player's nametag
-     * KEPT ONLY FOR 1.12 API COMPATIBILITY
-     */
+    /** No-op, kept for API compatibility. */
     public fun destroy(player: Player) {}
 
-    /**
-     * destroys all nametags
-     * KEPT ONLY FOR 1.12 API COMPATIBILITY
-     */
+    /** No-op, kept for API compatibility. */
     public fun clear() {}
 
-    /**
-     * hide player's nametag (e.g. sneaking)
-     * KEPT ONLY FOR 1.12 API COMPATIBILITY
-     */
+    /** No-op, kept for API compatibility. */
     public fun visibility(player: Player, visible: Boolean) {}
 
-    /**
-     * Update nametag text for player
-     */
     public fun updateTextForPlayer(player: Player) {
         val scoreboard = PlayerScoreboardManager.getScoreboard(player.getUniqueId())
 
-        // unregister towns
         for (team in scoreboard.getTeams()) {
             if (team.name === "player") {
                 continue
@@ -125,7 +94,6 @@ public object Nametag {
             }
         }
 
-        // re create teams from town names
         for (town in Nodes.towns.values) {
             val townNametagId = "t${town.townNametagId}"
             val teamTown = scoreboard.registerNewTeam(townNametagId)
@@ -133,7 +101,6 @@ public object Nametag {
             teamTown.setOption(Team.Option.NAME_TAG_VISIBILITY, Team.OptionStatus.ALWAYS)
         }
 
-        // add other players to teams
         for (otherPlayer in Bukkit.getOnlinePlayers()) {
             val town = Nodes.getTownFromPlayer(otherPlayer)
             if (player === otherPlayer) {
@@ -148,7 +115,7 @@ public object Nametag {
                 if (!team.hasEntry(player.getName())) {
                     team.addEntry(player.getName())
                 }
-            } else { // another player
+            } else {
                 if (town !== null) {
                     val townNametagId = "t${town.townNametagId}"
                     val team = scoreboard.getTeam(townNametagId)
@@ -162,9 +129,6 @@ public object Nametag {
         player.setScoreboard(scoreboard)
     }
 
-    /**
-     * Synchronously update all nametag text for all players
-     */
     public fun updateAllText() {
         val onlinePlayers = Bukkit.getOnlinePlayers()
         for (player in onlinePlayers) {
@@ -214,7 +178,6 @@ public object Nametag {
             tickOffset += 1L
         }
 
-        // finish after next tick
         Bukkit.getScheduler().runTaskLater(
             Nodes.plugin!!,
             object : Runnable {

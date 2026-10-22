@@ -6,8 +6,7 @@ package phonon.nodes.gui
 
 public data class GuiSlot(val x: Int, val y: Int)
 
-// pre-calculated gui slots for 54 sized chest
-// for iterating items alongside chest slots
+// Precomputed slots of a 54-slot chest, for iterating items alongside slots
 public val GUI_SLOTS: Array<GuiSlot> = arrayOf(
     GuiSlot(0, 0), GuiSlot(1, 0), GuiSlot(2, 0), GuiSlot(3, 0), GuiSlot(4, 0), GuiSlot(5, 0), GuiSlot(6, 0), GuiSlot(7, 0), GuiSlot(8, 0),
     GuiSlot(0, 1), GuiSlot(1, 1), GuiSlot(2, 1), GuiSlot(3, 1), GuiSlot(4, 1), GuiSlot(5, 1), GuiSlot(6, 1), GuiSlot(7, 1), GuiSlot(8, 1),

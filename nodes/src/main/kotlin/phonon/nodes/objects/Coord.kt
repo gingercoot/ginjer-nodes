@@ -17,8 +17,7 @@ data class Coord(val x: Int, val z: Int) {
     companion object {
         fun fromBlockCoords(x: Int, z: Int): Coord = Coord(toChunk(x), toChunk(z))
 
-        // return coord from string in format "x,z"
-        // two numbers separated by comma (with no spaces)
+        // Parses "x,z" (no spaces)
         fun fromString(s: String): Coord? {
             val splitIndex = s.indexOf(",")
             if (splitIndex != -1 && splitIndex < s.length) {

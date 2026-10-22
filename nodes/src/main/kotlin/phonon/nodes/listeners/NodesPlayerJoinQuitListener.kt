@@ -22,20 +22,32 @@ public class NodesPlayerJoinQuitListener : Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     public fun onPlayerJoin(event: PlayerJoinEvent) {
-        // create resident wrapper for player
-        // createResident checks if resident already exists
         val player: Player = event.getPlayer()
         Nodes.createResident(player)
         phonon.nodes.mining.MiningBoost.onJoin(player)
         phonon.nodes.war.WarTimer.onPlayerJoin(player)
+
         val resident: Resident = Nodes.getResident(player)!!
+
+        val nation = resident.nation ?: resident.town?.nation
+        if (nation != null) {
+            val cap = phonon.nodes.RallyCap.get(nation)
+            if (cap >= 0 && nation.playersOnline.size >= cap) {
+                org.bukkit.Bukkit.getScheduler().runTask(
+                    Nodes.plugin!!,
+                    Runnable {
+                        player.kickPlayer(phonon.nodes.RallyCap.denyMessage(nation))
+                    },
+                )
+                return
+            }
+        }
+
         Nodes.setResidentOnline(resident, player)
 
-        // if war enabled, send active chunk attack progress bars
         if (Nodes.war.enabled == true) {
             Nodes.war.sendWarProgressBarToPlayer(player)
         }
-        phonon.nodes.war.WarTimer.onPlayerJoin(player)
     }
 
     @EventHandler
@@ -49,10 +61,8 @@ public class NodesPlayerJoinQuitListener : Listener {
             phonon.nodes.war.WarTimer.onPlayerQuit(player)
         }
 
-        // remove player from muting global chat
         Chat.enableGlobalChat(player)
 
-        // if playing attacking a chunk, stop it
         if (Nodes.war.enabled) {
             val attacks = Nodes.war.attackers.get(player.getUniqueId())
             if (attacks !== null) {

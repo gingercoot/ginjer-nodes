@@ -12,9 +12,6 @@ import phonon.nodes.commands.progressBar
 import phonon.nodes.commands.warpToPort
 import phonon.nodes.objects.Port
 
-/**
- * Task for running warp
- */
 public class PortWarpTask(
     val player: Player,
     val destination: Port,
@@ -28,17 +25,14 @@ public class PortWarpTask(
     private val locY = initialLoc.getBlockY()
     private val locZ = initialLoc.getBlockZ()
 
-    // remaining time counter
     private var time = timeWarp
 
     override fun run() {
-        // check if player moved
         val location = player.location
         if (locX != location.getBlockX() || locY != location.getBlockY() || locZ != location.getBlockZ()) {
             Message.announcement(player, "${ChatColor.RED}Moved! Stopped warping...")
             this.cancel()
 
-            // schedule main thread to remove cancelled task
             Bukkit.getScheduler().runTask(
                 Nodes.plugin!!,
                 object : Runnable {
@@ -56,14 +50,12 @@ public class PortWarpTask(
         if (time <= 0.0) {
             this.cancel()
 
-            // schedule main thread to finish warp
             Bukkit.getScheduler().runTask(
                 Nodes.plugin!!,
                 object : Runnable {
                     public override fun run() {
                         Nodes.playerWarpTasks.remove(player.getUniqueId())
 
-                        // do warp
                         warpToPort(
                             destination,
                             playersToWarp,

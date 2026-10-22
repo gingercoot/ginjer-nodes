@@ -17,7 +17,6 @@ public class GuiLabel(
     val tooltip: List<String>,
 ) : GuiElement {
 
-    // set icon meta
     init {
         val itemMeta = icon.getItemMeta()
         itemMeta.setDisplayName(title)

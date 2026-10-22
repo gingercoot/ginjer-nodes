@@ -32,7 +32,6 @@ class WarzoneCommand :
                 cmdStatus(sender, args)
             }
             "list" -> {
-                // list is useful for everyone who can status
                 if (!sender.hasPermission("nodes.warzone.status") &&
                     !sender.hasPermission("nodes.warzone.admin") &&
                     !sender.isOp
@@ -63,14 +62,23 @@ class WarzoneCommand :
         return true
     }
 
+    private fun isAdmin(sender: CommandSender): Boolean = sender.hasPermission("nodes.warzone.admin") || sender.isOp
+
+    private fun canViewStatus(sender: CommandSender): Boolean = sender.hasPermission("nodes.warzone.status") || isAdmin(sender)
+
     private fun printHelp(sender: CommandSender) {
         Message.print(sender, "${ChatColor.BOLD}[Nodes] Warzone commands:")
-        Message.print(sender, "/warzone create <name> <territoryId> [ids...]${ChatColor.WHITE}: Create wz town + claim nodes")
-        Message.print(sender, "/warzone enable <name> <duration>${ChatColor.WHITE}: Start event (e.g. 72h, 90m)")
-        Message.print(sender, "/warzone disable <name>${ChatColor.WHITE}: End event and award winner")
-        Message.print(sender, "/warzone status [name]${ChatColor.WHITE}: Scores / time left")
-        Message.print(sender, "/warzone list${ChatColor.WHITE}: List registered warzones")
-        Message.print(sender, "/warzone remove <name>${ChatColor.WHITE}: Unregister from warzone list (must be disabled first)")
+        if (canViewStatus(sender)) {
+            Message.print(sender, "/warzone status [name]${ChatColor.WHITE}: Scores / time left")
+            Message.print(sender, "/warzone list${ChatColor.WHITE}: List registered warzones")
+        }
+        if (isAdmin(sender)) {
+            Message.print(sender, "/warzone create <name> <territoryId> [ids...]${ChatColor.WHITE}: Create wz town + claim nodes")
+            Message.print(sender, "/warzone enable <name> <duration>${ChatColor.WHITE}: Start event (e.g. 72h, 90m)")
+            Message.print(sender, "/warzone disable <name>${ChatColor.WHITE}: End event and award winner")
+            Message.print(sender, "/warzone remove <name>${ChatColor.WHITE}: Unregister from warzone list (must be disabled first)")
+            Message.print(sender, "/warzone save${ChatColor.WHITE}: Save warzones.json")
+        }
     }
 
     private fun cmdCreate(sender: CommandSender, args: Array<out String>) {
@@ -161,7 +169,6 @@ class WarzoneCommand :
         if (state.enabled && System.currentTimeMillis() < state.endsAt) {
             Message.print(sender, "  Status: ${ChatColor.GREEN}LIVE")
             Message.print(sender, "  Time left: ${ChatColor.WHITE}${Warzone.formatDurationLeft(state.endsAt)}")
-            // same text as boss bar (current majority + lead totals)
             Message.print(sender, "  ${ChatColor.WHITE}${Warzone.holdSummary(state)}")
         } else {
             Message.print(sender, "  Status: ${ChatColor.GRAY}inactive")
@@ -226,11 +233,17 @@ class WarzoneCommand :
         alias: String,
         args: Array<out String>,
     ): List<String> {
+        val admin = isAdmin(sender)
         if (args.size == 1) {
-            return listOf("create", "enable", "disable", "status", "list", "help", "save")
-                .filter { it.startsWith(args[0].lowercase()) }
+            val subs = mutableListOf("help")
+            if (canViewStatus(sender)) subs.addAll(listOf("status", "list"))
+            if (admin) subs.addAll(listOf("create", "enable", "disable", "remove", "save"))
+            return subs.filter { it.startsWith(args[0].lowercase()) }
         }
-        if (args.size == 2 && args[0].lowercase() in setOf("enable", "disable", "status", "remove")) {
+        val nameSubs = mutableSetOf<String>()
+        if (canViewStatus(sender)) nameSubs.add("status")
+        if (admin) nameSubs.addAll(listOf("enable", "disable", "remove"))
+        if (args.size == 2 && args[0].lowercase() in nameSubs) {
             return Warzone.zones.keys.filter { it.lowercase().startsWith(args[1].lowercase()) }.sorted()
         }
         return listOf()

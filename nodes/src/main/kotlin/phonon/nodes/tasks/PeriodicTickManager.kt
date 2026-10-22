@@ -14,25 +14,19 @@ public object PeriodicTickManager {
 
     private var task: BukkitTask? = null
 
-    // previous tick time
     private var previousTime: Long = 0L
 
-    // run scheduler for saving backups
     public fun start(plugin: Plugin, period: Long) {
         if (this.task !== null) {
             return
         }
 
-        // initialize previous time
         previousTime = System.currentTimeMillis()
 
-        // scheduler for writing backups
         val task = object : Runnable {
             public override fun run() {
-                // update time tick
-                // capture previousTime locally so that functions that require dt = currTime - prevTime
-                // have safe previous time value, in the rare/~impossible case that the main thread
-                // lags so much that this runs and sets previousTime again before scheduled tasks run
+                // Capture previousTime locally so dt stays valid even if the main thread
+                // lags and this task runs again before the scheduled tasks do
                 val currTime = System.currentTimeMillis()
                 val capturedPreviousTime = previousTime
                 previousTime = currTime
@@ -43,7 +37,6 @@ public object PeriodicTickManager {
                 if (currTime > Nodes.lastIncomeTime + Config.incomePeriod) {
                     Nodes.lastIncomeTime = currTime
 
-                    // schedule main thread to run task
                     Bukkit.getScheduler().runTask(
                         plugin,
                         object : Runnable {
@@ -55,7 +48,6 @@ public object PeriodicTickManager {
                         },
                     )
 
-                    // save current time
                     Bukkit.getScheduler().runTaskAsynchronously(Nodes.plugin!!, FileWriteTask(currTime.toString(), Config.pathLastIncomeTime, null))
                 }
 

@@ -33,9 +33,6 @@ import phonon.nodes.objects.Resident
 import phonon.nodes.objects.Territory
 import phonon.nodes.objects.Town
 
-/**
- * Listener for any special chest protection
- */
 public class NodesChestProtectionListener : Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -59,15 +56,12 @@ public class NodesChestProtectionListener : Listener {
                     return
                 }
 
-                // unprotect
                 if (town.protectedBlocks.contains(block)) {
                     Nodes.protectTownChest(town, block, false)
 
                     player.playSound(player.location, NODES_SOUND_CHEST_PROTECT, 1.0f, 0.5f)
                     Message.print(player, "${ChatColor.DARK_AQUA}Removed chest protection")
-                }
-                // protect
-                else {
+                } else {
                     Nodes.protectTownChest(town, block, true)
 
                     player.playSound(player.location, NODES_SOUND_CHEST_PROTECT, 1.0f, 1.0f)
@@ -83,13 +77,11 @@ public class NodesChestProtectionListener : Listener {
         Nodes.stopProtectingChests(resident)
     }
 
-    // disable hopper events
+    // Stop hoppers pulling items out of protected chests
     @EventHandler(priority = EventPriority.LOW)
     public fun onHopperMove(event: InventoryMoveItemEvent) {
-        // check if destination is hopper
         val dest = event.getDestination()
         if (dest.holder is Hopper) {
-            // check if source is a protected block
             val source = event.getSource()
             if (source.type == InventoryType.CHEST) {
                 val block = source.location?.getBlock()
@@ -104,9 +96,6 @@ public class NodesChestProtectionListener : Listener {
     }
 }
 
-/**
- * Listen to block destruction, unprotect chests if occurs
- */
 public class NodesChestProtectionDestroyListener : Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

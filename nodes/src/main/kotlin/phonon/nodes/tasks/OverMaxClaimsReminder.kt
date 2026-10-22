@@ -14,17 +14,14 @@ public object OverMaxClaimsReminder {
 
     private var task: BukkitTask? = null
 
-    // run scheduler for saving backups
     public fun start(plugin: Plugin, period: Long) {
         if (this.task !== null) {
             return
         }
 
-        // scheduler for writing backups
         val task = object : Runnable {
 
             public override fun run() {
-                // schedule main thread to run income tick
                 Bukkit.getScheduler().runTask(
                     plugin,
                     object : Runnable {

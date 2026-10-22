@@ -56,6 +56,7 @@ class StatsListener : Listener {
         if (killerId != null && killerId != victim.uniqueId) {
             PlayerStats.addKill(killerId)
             WarStats.addKill(killerId)
+            Bukkit.getPlayer(killerId)?.let { phonon.nodes.killshop.KillShop.onPlayerKill(it) }
         }
     }
 

@@ -18,7 +18,6 @@ import net.minecraft.server.level.ServerPlayer as NMSPlayer
 import net.minecraft.world.level.block.state.BlockState as NMSBlockState
 import net.minecraft.world.level.chunk.LevelChunk as NMSChunk
 
-// re-exported type aliases
 internal typealias NMSBlockPos = NMSBlockPos
 internal typealias NMSBlockState = NMSBlockState
 internal typealias NMSChunk = NMSChunk
@@ -29,14 +28,8 @@ internal typealias CraftWorld = CraftWorld
 internal typealias CraftPlayer = CraftPlayer
 internal typealias CraftMagicNumbers = CraftMagicNumbers
 
-/**
- * Wrapper for getting Bukkit player connection and sending packet.
- */
 internal fun Player.sendPacket(p: NMSPacket<*>) = (this as CraftPlayer).handle.connection.send(p)
 
-/**
- * Create custom name packet for armor stand entity.
- */
 public fun ArmorStand.createArmorStandNamePacket(name: String): NMSPacketSetEntityData {
     val entityId = (this as CraftEntity).handle.id
     val nameComponent = Optional.of(Component.literal(name) as Component)

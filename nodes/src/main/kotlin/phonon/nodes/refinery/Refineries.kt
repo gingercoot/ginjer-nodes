@@ -52,7 +52,6 @@ data class Refinery(
     val z: Int,
     var intervalMs: Long,
     val outputs: MutableList<RefineryOutput> = mutableListOf(),
-    /** Ready-to-collect stacks */
     val buffer: MutableList<ItemStack> = mutableListOf(),
     var lastProduceAt: Long = System.currentTimeMillis(),
     /** Legacy field from hologram version; cleared on load */
@@ -239,8 +238,6 @@ object Refineries {
         null
     }
 
-    // ----- legacy hologram cleanup -----
-
     private fun clearLegacyHologram(r: Refinery) {
         r.hologramUuid?.let { id ->
             Bukkit.getWorld(r.world)?.getEntity(id)?.remove()
@@ -254,8 +251,6 @@ object Refineries {
             }
         }
     }
-
-    // ----- persist -----
 
     fun load() {
         byId.clear()
@@ -354,7 +349,6 @@ object Refineries {
     fun ensureTask() {
         val plugin = Nodes.plugin ?: return
         if (tickTask == null || tickTask?.isCancelled == true) {
-            // every 1s: production check
             tickTask = Bukkit.getScheduler().runTaskTimer(
                 plugin,
                 Runnable { tickAll() },

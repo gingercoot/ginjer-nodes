@@ -23,39 +23,30 @@ public class Resident(val uuid: UUID, val name: String) {
     var town: Town? = null
     var nation: Nation? = null
 
-    // claims power and current elapsed time until power added
     var claims: Int = 0
     var claimsTime: Long = 0L
 
-    // town create cooldown listener
     var townCreateCooldown: Long = 0L
 
-    // flag that player trusted by town
     var trusted: Boolean = false
 
-    // player is protecting chest with right click
     var isProtectingChests: Boolean = false
 
-    // chat mode config
     var chatMode: ChatMode = ChatMode.GLOBAL
     var prefix: String = ""
     var suffix: String = ""
 
-    // town teleport thread and flag for outpost
     var teleportThread: BukkitTask? = null
     var isTeleportingToOutpost: Boolean = false // if true, gives outpost teleport cost refund if teleport fails
     var isTeleportingToNationTown: Boolean = false // if true, gives nation town teleport cost refund if teleport fails
 
-    // town invite
     var invitingNation: Nation? = null
     var invitingTown: Town? = null
     var invitingPlayer: Player? = null
     var inviteThread: BukkitTask? = null
 
-    // minimap
     var minimap: Minimap? = null
 
-    // save state needs update flag
     private var saveState: ResidentSaveState
 
     @Suppress("PropertyName")
@@ -67,21 +58,12 @@ public class Resident(val uuid: UUID, val name: String) {
 
     public override fun hashCode(): Int = this.uuid.hashCode()
 
-    // returns player associated with resident
-    // returns null when player is offline
+    // null when offline
     public fun player(): Player? = Bukkit.getPlayer(this.uuid)
 
-    // ===================================
-    // Minimap functions
-    // each minimap attached to a resident
-    // and only viewable by player
-    // ===================================
-
     public fun createMinimap(player: Player, size: Int) {
-        // remove any existing minimap
         this.destroyMinimap()
 
-        // create new minimap
         this.minimap = Minimap(this, player, size)
     }
 
@@ -93,14 +75,10 @@ public class Resident(val uuid: UUID, val name: String) {
         }
     }
 
-    // update player minimap if it exists
     public fun updateMinimap(coord: Coord) {
         this.minimap?.render(coord)
     }
 
-    // ===================================
-
-    // print resident info
     public fun printInfo(sender: CommandSender) {
         val town = this.town?.name ?: "${ChatColor.GRAY}None"
         val nation = this.nation?.name ?: "${ChatColor.GRAY}None"
@@ -146,14 +124,10 @@ public class Resident(val uuid: UUID, val name: String) {
         }
     }
 
-    // function to let client flag this object as dirty
     public fun needsUpdate() {
         this._needsUpdate = true
     }
 
-    // wrapper to return self as state
-    // - returns memoized copy if needsUpdate false
-    // - otherwise, parses self
     public fun getSaveState(): ResidentSaveState {
         if (this._needsUpdate) {
             this.saveState = ResidentSaveState(this)

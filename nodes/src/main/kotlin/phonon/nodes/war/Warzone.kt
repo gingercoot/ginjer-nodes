@@ -26,6 +26,7 @@ import phonon.nodes.Message
 import phonon.nodes.Nodes
 import phonon.nodes.objects.TerritoryId
 import phonon.nodes.objects.Town
+import phonon.nodes.util.DiscordRelay
 import java.io.FileReader
 import java.io.FileWriter
 import java.nio.file.Files
@@ -50,14 +51,12 @@ object Warzone {
 
     val path: Path = Paths.get("plugins/nodes/warzones.json")
 
-    /** town name (lowercase key optional) -> state */
     val zones: ConcurrentHashMap<String, WarzoneState> = ConcurrentHashMap()
 
     private var scoreTask: BukkitTask? = null
     private var endCheckTask: BukkitTask? = null
     private val playerBars: ConcurrentHashMap<UUID, org.bukkit.boss.BossBar> = ConcurrentHashMap()
 
-    /** Score tick interval (ticks). */
     private const val SCORE_PERIOD_TICKS: Long = 20L
 
     // -------------------------------------------------------------------------
@@ -79,21 +78,14 @@ object Warzone {
         return state.enabled && System.currentTimeMillis() < state.endsAt
     }
 
-    /**
-     * Territory is attackable as warzone land: owned by an enabled warzone town.
-     */
     fun isAttackableWarzoneTerritory(town: Town?): Boolean = isEnabledWarzoneTown(town)
 
-    /**
-     * Attacker may flag this warzone town: must be enemies with the warzone town.
-     */
     fun canAttackWarzone(attacker: Town, warzoneTown: Town): Boolean {
         if (!isEnabledWarzoneTown(warzoneTown)) return false
         if (attacker === warzoneTown) return false
         return attacker.enemies.contains(warzoneTown)
     }
 
-    /** Enabled warzone whose town owns this territory, or null. */
     fun getEnabledWarzoneForTerritory(territory: phonon.nodes.objects.Territory): WarzoneState? {
         val town = territory.town ?: return null
         val state = zones[town.name] ?: return null
@@ -116,7 +108,6 @@ object Warzone {
             "Holding: nobody"
         }
 
-        // top total score
         var topName: String? = null
         var topMs = -1L
         for ((n, ms) in state.scores) {
@@ -160,10 +151,8 @@ object Warzone {
             "${ChatColor.RED}${state.townName} ${ChatColor.WHITE}$summary ${ChatColor.GRAY}| ends $left",
         )
 
-        // progress = event time remaining
         val now = System.currentTimeMillis()
-        // approximate: we don't store startedAt; use endsAt - now vs last known duration is hard
-        // simple pulse: full if > 1h left else scale by 1h
+        // No start time is stored, so the bar shows time left scaled to 1h
         val leftMs = (state.endsAt - now).coerceAtLeast(0L).toDouble()
         bar.progress = (leftMs / 3_600_000.0).coerceIn(0.0, 1.0)
     }
@@ -189,7 +178,6 @@ object Warzone {
         val s = input.trim().lowercase()
         if (s.isEmpty()) return null
 
-        // pure number => minutes
         s.toLongOrNull()?.let { return it * 60_000L }
 
         var totalMs = 0L
@@ -323,6 +311,7 @@ object Warzone {
             "${ChatColor.DARK_RED}${ChatColor.BOLD}[Warzone] $name is LIVE for ${formatDurationLeft(state.endsAt)}! " +
                 "Declare /war $name then capture territories. Majority hold scores time.",
         )
+        DiscordRelay.warzone("**[Warzone]** $name is LIVE for ${formatDurationLeft(state.endsAt)}! Declare war on $name to fight for it")
         refreshAllBossBars()
         return Result.success(state)
     }
@@ -385,6 +374,13 @@ object Warzone {
                     state.scores.merge(holder.name, delta) { a, b -> a + b }
                 }
             }
+            if (holder?.name != state.lastMajorityTown) {
+                if (holder != null) {
+                    DiscordRelay.warzone("**[Warzone]** ${holder.name} now holds the majority of $name")
+                } else {
+                    DiscordRelay.warzone("**[Warzone]** Nobody holds the majority of $name")
+                }
+            }
             state.lastMajorityTown = holder?.name
             state.lastScoreTickMs = now
         }
@@ -403,7 +399,6 @@ object Warzone {
         for (terrId in warzoneTown.territories.toList()) {
             val terr = Nodes.getTerritoryFromId(terrId) ?: continue
 
-            // territory-level occupation (core capture)
             if (terr.occupier != null) {
                 Nodes.releaseTerritory(terr)
             }
@@ -423,7 +418,6 @@ object Warzone {
                 chunk.attacker = null
                 chunk.occupier = null
             }
-            // Attack no longer has .thread — use cancelled flag + cancelAttack
             attack.cancelled = true
             try {
                 FlagWar.cancelAttack(attack)
@@ -460,7 +454,6 @@ object Warzone {
     fun endEvent(name: String, award: Boolean) {
         val state = zones[name] ?: return
         state.enabled = false
-        // clear bars for everyone (event over)
         for (p in Bukkit.getOnlinePlayers()) {
             clearBossBar(p)
         }
@@ -523,8 +516,13 @@ object Warzone {
                     "Winner: ${winner.name} (held ${formatHoldMs(heldMs)}). " +
                     "All warzone territories transferred.",
             )
+            DiscordRelay.warzone(
+                "**[Warzone]** $name ended! Winner: **${winner.name}** (held ${formatHoldMs(heldMs)}), " +
+                    "all warzone territories transferred",
+            )
         } else {
             Message.broadcast("${ChatColor.GOLD}${ChatColor.BOLD}[Warzone] $name ended with no winner.")
+            DiscordRelay.warzone("**[Warzone]** $name ended with no winner")
             warzoneTown?.territories?.forEach { id ->
                 Nodes.getTerritoryFromId(id)?.occupier = null
             }

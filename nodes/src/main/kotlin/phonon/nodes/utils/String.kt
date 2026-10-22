@@ -12,7 +12,6 @@ import phonon.nodes.Nodes
 import phonon.nodes.objects.Nation
 import phonon.nodes.objects.Town
 
-// serializer for a list type container
 inline fun <T> stringArrayFromList(iter: List<T>, itemName: (T) -> String): String {
     var s = "["
     for ((i, v) in iter.withIndex()) {
@@ -53,14 +52,11 @@ inline fun <K, V> stringMapFromMap(iter: Map<K, V>, keyString: (K) -> String, va
     return s
 }
 
-// matches any string in a list of strings that
-// begins with start
 public fun filterByStart(list: List<String>, start: String): List<String> {
     val startLowerCase = start.lowercase()
     return list.filter { s -> s.lowercase().startsWith(startLowerCase) }
 }
 
-// match player name from online players
 public fun filterPlayer(start: String): List<String> {
     val startLowerCase = start.lowercase()
     val players = Bukkit.getOnlinePlayers()
@@ -106,7 +102,6 @@ public fun filterNation(start: String): List<String> {
     return filtered
 }
 
-// filter both Towns and Nations by starting phrase
 public fun filterTownOrNation(start: String): List<String> {
     val filteredTowns = filterTown(start)
     val filteredNations = filterNation(start)
@@ -114,7 +109,6 @@ public fun filterTownOrNation(start: String): List<String> {
     return filteredTowns.plus(filteredNations)
 }
 
-// filter town residents names
 public fun filterTownResident(town: Town, start: String): List<String> {
     val startLowerCase = start.lowercase()
     val filtered = town.residents
@@ -126,7 +120,6 @@ public fun filterTownResident(town: Town, start: String): List<String> {
     return filtered
 }
 
-// filter nation residents names
 public fun filterNationResident(nation: Nation, start: String): List<String> {
     val startLowerCase = start.lowercase()
     val filtered = nation.residents
@@ -138,7 +131,6 @@ public fun filterNationResident(nation: Nation, start: String): List<String> {
     return filtered
 }
 
-// filter nation town names
 public fun filterNationTown(nation: Nation, start: String): List<String> {
     val startLowerCase = start.lowercase()
     val filtered = nation.towns

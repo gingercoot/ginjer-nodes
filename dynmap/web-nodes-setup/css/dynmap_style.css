@@ -1245,26 +1245,29 @@
 }
 
 div.statusmessage {
-  position: relative;
-  z-index: 2;
-  &:empty {
-    display: none;
-  }
-  > div {
-  margin-block-end: 2rem;
-  padding: 1rem;
-  color: var(--smokey-white);
-  font-weight: bold;
-  font-size: 16px;
-  background: linear-gradient(90deg, var(--status-error) 30%, transparent 80%);
-  font-weight: 300;
-  border-radius: 5px;
-}
+    position: relative;
+    z-index: 2;
 
-.logincontainer {
-    background-color: rgba(0,0,0,0.0);
-}
+    &:empty {
+        display: none;
+    }
 
-.pinnedloginbutton {
-	margin-right: 201px;
+    > div {
+        margin-block-end: 2rem;
+        padding: 1rem;
+        color: var(--smokey-white);
+        font-weight: bold;
+        font-size: 16px;
+        background: linear-gradient(90deg, var(--status-error) 30%, transparent 80%);
+        font-weight: 300;
+        border-radius: 5px;
+    }
+
+    .logincontainer {
+        background-color: rgba(0, 0, 0, 0.0);
+    }
+
+    .pinnedloginbutton {
+        margin-right: 201px;
+    }
 }

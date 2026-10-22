@@ -25,7 +25,6 @@ public class NodesPlayerAFKKickListener : Listener {
 
         for (msg in AFK_MESSAGES) {
             if (msg == reason) {
-                // get resident
                 val player: Player = event.getPlayer()
                 val resident = Nodes.getResident(player)
                 if (resident === null) {

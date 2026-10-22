@@ -29,6 +29,16 @@ object DiscordRelay {
         send(Config.discordWebhookWar, message)
     }
 
+    fun raid(message: String) {
+        if (!Config.discordRelayRaids) return
+        send(Config.discordWebhookRaids.ifBlank { Config.discordWebhookWar }, message)
+    }
+
+    fun warzone(message: String) {
+        if (!Config.discordRelayWarzones) return
+        send(Config.discordWebhookWarzones.ifBlank { Config.discordWebhookWar }, message)
+    }
+
     private fun send(webhookUrl: String, message: String) {
         val url = webhookUrl.trim()
         if (url.isEmpty() || !url.startsWith("https://discord.com/api/webhooks/")) {
@@ -69,7 +79,7 @@ object DiscordRelay {
             .replace("\n", "\\n")
             .replace("\r", "")
             .replace("\t", " ")
-        // Discord max content length 2000
+        // Discord caps content at 2000 chars
         val clipped = if (escaped.length > 1900) escaped.substring(0, 1900) + "..." else escaped
         return """{"content":"$clipped"}"""
     }

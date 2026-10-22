@@ -36,7 +36,6 @@ public class AllyCommand :
     TabCompleter {
 
     override fun onCommand(sender: CommandSender, cmd: Command, commandLabel: String, args: Array<String>): Boolean {
-        // no args, print help
         if (args.size == 0) {
             printHelp(sender)
             return true
@@ -82,7 +81,7 @@ public class AllyCommand :
     }
 
     private fun printHelp(sender: CommandSender) {
-        Message.print(sender, "[Nodes] Ally commands:")
+        Message.print(sender, "${ChatColor.BOLD}[Nodes] Ally commands:")
         Message.print(sender, "/ally [town]${ChatColor.WHITE}: Offer/accept alliance with town")
         Message.print(sender, "/ally [nation]${ChatColor.WHITE}: Offer/accept alliance with nation")
         Message.print(sender, "/unally [town]${ChatColor.WHITE}: Break alliance with town")
@@ -93,15 +92,13 @@ public class AllyCommand :
     private fun parseTownOrNationName(player: Player, args: Array<String>, town: Town, townNation: Nation?) {
         val target = args[0]
 
-        // 1. try nation
         var otherNation = Nodes.nations.get(target)
         if (otherNation !== null) {
             offerAlliance(player, town, otherNation.capital, townNation, otherNation)
             return
         }
 
-        // 2. try town
-        //    if town has nation, use nation
+        // Else a town (resolved to its nation if it has one)
         val otherTown = Nodes.towns.get(target)
         if (otherTown !== null) {
             otherNation = otherTown.nation
@@ -116,7 +113,7 @@ public class AllyCommand :
         Message.error(player, "Town or nation \"${target}\" does not exist")
     }
 
-    // offer alliance, other side must offer alliance to accept
+    // The alliance forms once both sides have offered
     private fun offerAlliance(player: Player, town: Town, other: Town, townNation: Nation?, otherNation: Nation?) {
         if (town === other) {
             Message.error(player, "You cannot make a peace treaty with yourself.")
@@ -138,7 +135,6 @@ public class AllyCommand :
             }
 
             when (result.getOrNull()) {
-                // message that alliance is being requested
                 AllianceRequest.NEW -> {
                     val thisSideMsg = "You are offering an alliance to $otherSideName"
                     for (r in town.residents) {
@@ -157,7 +153,6 @@ public class AllyCommand :
                     }
                 }
 
-                // broadcast that alliance was created
                 AllianceRequest.ACCEPTED -> {
                     Message.broadcast("$thisSideName has formed an alliance with $otherSideName")
                 } null -> {}

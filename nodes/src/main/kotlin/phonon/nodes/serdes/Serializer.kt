@@ -25,8 +25,6 @@ public object Serializer {
         towns: List<TownSaveState>,
         nations: List<NationSaveState>,
     ): String {
-        // calculate string builder capacity
-
         // initial metadata header + close bracket [26]: {"meta":{"type":"towns"},}
         // residents header + close bracket + comma [15]: "residents":{},
         // towns header + close bracket + comma [11]: "towns":{},
@@ -55,7 +53,6 @@ public object Serializer {
             bufferSize += (4 + v.name.length + v.toJsonString().length)
         }
 
-        // json string builder
         val jsonString = StringBuilder(bufferSize)
 
         // ===============================
@@ -108,27 +105,19 @@ public object Serializer {
 
         jsonString.append("}}")
 
-        // ===============================
-
         return jsonString.toString()
     }
 
-    /**
-     * Serialize ports to JSON string
-     */
     fun portsToJson(
         portGroups: List<PortGroupSaveState>,
         ports: List<PortSaveState>,
     ): String {
-        // will add arbitrary extra margin and up size to 200
         var bufferSize = 200
 
-        // groups array
         for (v in portGroups) {
             bufferSize += (4 + v.name.length + v.toJsonString().length)
         }
 
-        // ports array - rough estimate
         for (v in ports) {
             bufferSize += (4 + v.name.length + v.toJsonString().length)
         }

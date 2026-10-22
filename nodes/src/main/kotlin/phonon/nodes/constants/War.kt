@@ -4,7 +4,6 @@
 
 package phonon.nodes.constants
 
-// flag war attack errors
 public val ErrorNoTerritory = Exception("[War] There is no territory here")
 public val ErrorAlreadyUnderAttack = Exception("[War] Chunk already under attack")
 public val ErrorAlreadyCaptured = Exception("[War] Chunk already captured by town or allies")

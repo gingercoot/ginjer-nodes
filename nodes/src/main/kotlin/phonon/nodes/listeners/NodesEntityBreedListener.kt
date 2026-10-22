@@ -27,22 +27,19 @@ public class NodesEntityBreedListener : Listener {
         val block = location.block
         val blockY = location.blockY
 
-        // checks that breed event meets sky light level requirements
         if (block.lightFromSky < Config.breedingMinSkyLight) {
             event.setCancelled(true)
             return
         }
 
-        // check breed event within height range allowed
         if (blockY < Config.breedingMinYHeight || blockY > Config.breedingMaxYHeight) {
             event.setCancelled(true)
             return
         }
 
-        val entity: Entity = event.getEntity() // father and mother are the same entity type
+        val entity: Entity = event.getEntity()
         val territory: Territory? = Nodes.getTerritoryFromChunk(entity.location.chunk)
 
-        // check if territory is wilderness (either no territory or unowned land)
         if (!Config.allowBreedingInWilderness && (territory === null || territory.town === null)) {
             event.setCancelled(true)
             return
@@ -52,25 +49,18 @@ public class NodesEntityBreedListener : Listener {
             val entityType = entity.type
             val breedRate = territory.animals.get(entityType)
 
-            // successful breed
             val randNum: Double = ThreadLocalRandom.current().nextDouble()
             if (breedRate !== null && randNum <= breedRate) {
-                // do tax event check
                 val territoryOccupier = territory.occupier
                 if (territoryOccupier != null && Math.random() <= Config.taxAnimalRate) {
-                    // convert breeded animal to spawn egg given to occupier
-                    // 1.12
-                    // Nodes.addToIncome(territoryOccupier, Material.MONSTER_EGG, 1, entity.type.ordinal)
-                    // 1.13+
+                    // Occupier gets the bred animal as a spawn egg
                     val spawnEgg = spawnEggFromEntity(entityType)
                     if (spawnEgg !== null) {
                         Nodes.addToIncome(territoryOccupier, spawnEgg, 1)
                     }
 
                     event.entity.remove()
-                }
-                // handle town over max claims penalty
-                else if (Config.overClaimsPenalty && territory?.town?.isOverClaimsMax == true) {
+                } else if (Config.overClaimsPenalty && territory?.town?.isOverClaimsMax == true) {
                     if (Math.random() < Config.overClaimsMaxPenalty) {
                         event.entity.remove()
                     }

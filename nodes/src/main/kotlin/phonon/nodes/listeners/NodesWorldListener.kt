@@ -4,6 +4,8 @@
  * - flag war events
  * - hidden ore
  * - ore, crop harvest taxation
+ *
+ * Anti-blockglitch: only on denied BUILD (place / bucket), not interact.
  */
 
 package phonon.nodes.listeners
@@ -49,10 +51,13 @@ import phonon.nodes.constants.INTERACTIVE_BLOCKS
 import phonon.nodes.constants.PROTECTED_BLOCKS
 import phonon.nodes.constants.PermissionsGroup
 import phonon.nodes.constants.TownPermissions
+import phonon.nodes.objects.PlotAction
 import phonon.nodes.objects.Resident
 import phonon.nodes.objects.Territory
 import phonon.nodes.objects.TerritoryChunk
 import phonon.nodes.objects.Town
+import phonon.nodes.plot.Plots
+import phonon.nodes.util.AntiBlockGlitch
 import phonon.nodes.war.Attack
 import phonon.nodes.war.FlagWar
 import phonon.nodes.war.Warzone
@@ -72,19 +77,14 @@ public class NodesWorldListener : Listener {
         }
         val territoryChunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
 
-        // if war enabled, and chunk is being attacked, do flag checks
-
         if (territoryChunk?.attacker !== null) {
-            var attack = FlagWar.chunkToAttacker.get(territoryChunk.coord)!!
+            val attack = FlagWar.chunkToAttacker.get(territoryChunk.coord)!!
 
             if (blockInWarFlagNoBuildRegion(block, attack)) {
-                // handle war flag breaking
                 if (attack.flagBlock == block) {
-                    event.setCancelled(true)
+                    event.isCancelled = true
 
-                    // handle breaking allies flags
                     if (!Config.allowBreakingAlliesFlags) {
-                        // allow player to break their own flag
                         if (player.uniqueId != attack.attacker) {
                             val relationship = getRelationshipOfPlayerToTown(player, attack.town)
                             if (relationship in setOf(
@@ -99,24 +99,24 @@ public class NodesWorldListener : Listener {
                         }
                     }
                     attack.cancel()
-                    Message.broadcast("${ChatColor.GOLD}[War] Attack at (${block.x}, ${block.y}, ${block.z}) defeated by ${player.name}")
+                    Message.broadcast(
+                        "${ChatColor.GOLD}[War] Attack at (${block.x}, ${block.y}, ${block.z}) defeated by ${player.name}",
+                    )
                     return
                 }
-                // handle breaking within no build region
 
-                // op bypass
-                if (player.isOp()) {
+                if (player.isOp) {
                     return
                 }
-                event.setCancelled(true)
-                Message.error(player, "[War] Cannot break blocks within ${Config.flagNoBuildDistance} blocks of war flags")
+                event.isCancelled = true
+                Message.error(
+                    player,
+                    "[War] Cannot break blocks within ${Config.flagNoBuildDistance} blocks of war flags",
+                )
                 return
             }
         }
 
-        // block permissions
-
-        // op bypass
         if (player.isOp) {
             return
         }
@@ -125,60 +125,58 @@ public class NodesWorldListener : Listener {
         val town: Town? = territory?.town
         val resident = Nodes.getResident(player)
 
-        // interacting in areas with no territory or no town
+        val plotDestroy = Plots.allows(player, block, PlotAction.DESTROY)
+        if (plotDestroy != null) {
+            if (!plotDestroy) {
+                event.isCancelled = true
+                Message.error(player, "You cannot destroy in this plot!")
+                return
+            }
+            return
+        }
+
         if (town === null) {
             if (hasWildernessPermissions(territory)) {
                 return
             }
-
-            event.setCancelled(true)
+            event.isCancelled = true
             Message.error(player, "You cannot destroy here!")
             return
         }
 
-        // interacting in a town
         if (resident !== null) {
             if (hasTownPermissions(TownPermissions.DESTROY, town, resident)) {
                 return
             }
-
-            // territory occupier permissions
             val occupier: Town? = territory.occupier
             if (occupier !== null && hasOccupierPermissions(TownPermissions.DESTROY, town, occupier, resident)) {
                 return
             }
-
-            // war permissions
-            if (hasWarPermissions(resident, territory, territoryChunk!!)) {
+            if (territoryChunk != null && hasWarPermissions(resident, territory, territoryChunk)) {
                 return
             }
         }
 
-        event.setCancelled(true)
+        event.isCancelled = true
         Message.error(player, "You cannot destroy here!")
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public fun onBlockBreakSuccess(event: BlockBreakEvent) {
-        if (event.isCancelled()) {
+        if (event.isCancelled) {
             return
         }
 
         val player = event.player
         val block = event.block
-        val blockMaterial = block.getType()
+        val blockMaterial = block.type
 
-        // handle hidden ore mining
         if (Config.oreBlocks.contains(blockMaterial)) {
             if (!Nodes.hiddenOreInvalidBlocks.contains(block)) {
                 handleHiddenOre(player, block)
-
-                // temporarily invalide block location
                 Nodes.hiddenOreInvalidBlocks.add(block)
             }
-        }
-        // handle crop harvest
-        else if (Config.cropTypes.contains(blockMaterial)) {
+        } else if (Config.cropTypes.contains(blockMaterial)) {
             handleCropHarvest(block)
         }
     }
@@ -188,49 +186,46 @@ public class NodesWorldListener : Listener {
         val block: Block = event.block
         val player: Player = event.player
 
-        // war specific tasks
-        // war / warzone flag tasks
         val territoryChunkForWar = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
         val warzoneTown = territoryChunkForWar?.territory?.town
         val warzoneAttack =
             warzoneTown != null && Warzone.isAttackableWarzoneTerritory(warzoneTown)
+        val raidLive = territoryChunkForWar?.territory?.let {
+            phonon.nodes.war.Raid.isLiveTerritory(it)
+        } == true
 
-        if (Nodes.war.enabled || warzoneAttack) {
+        if (Nodes.war.enabled || warzoneAttack || raidLive) {
             val territoryChunk = territoryChunkForWar
             if (territoryChunk !== null) {
-                // disable block placement in flag no build distance
                 if (territoryChunk.attacker !== null) {
-                    // op bypass
-                    if (player.isOp()) {
+                    if (player.isOp) {
                         return
                     }
-
-                    var attack = FlagWar.chunkToAttacker.get(territoryChunk.coord)
-                    if (attack !== null) {
-                        if (blockInWarFlagNoBuildRegion(block, attack)) {
-                            event.setCancelled(true)
-                            Message.error(player, "[War] Cannot build within ${Config.flagNoBuildDistance} blocks of war flags")
-                            return
-                        }
+                    val attack = FlagWar.chunkToAttacker[territoryChunk.coord]
+                    if (attack != null && blockInWarFlagNoBuildRegion(block, attack)) {
+                        event.isCancelled = true
+                        Message.error(
+                            player,
+                            "[War] Cannot build within ${Config.flagNoBuildDistance} blocks of war flags",
+                        )
+                        return
                     }
-                }
-                // check if this is flag placement
-                else if (FlagWar.flagMaterials.contains(block.getType())) {
-                    // get player and town
+                } else if (FlagWar.flagMaterials.contains(block.type)) {
                     val resident = Nodes.getResident(player)
                     if (resident !== null) {
                         val town = resident.town
                         if (town !== null) {
-                            val result = FlagWar.beginAttack(player.getUniqueId(), town, territoryChunk, block)
+                            val result = FlagWar.beginAttack(player.uniqueId, town, territoryChunk, block)
                             if (result.isSuccess) {
-                                // get town being attacked
                                 val townAttacked = territoryChunk.territory.town!!
-
-                                // reclaiming your town
                                 if (townAttacked === town) {
-                                    Message.broadcast("${ChatColor.DARK_RED}[War] ${event.player.name} is liberating ${townAttacked.name} at (${block.x}, ${block.y}, ${block.z})")
-                                } else { // attacking enemy
-                                    Message.broadcast("${ChatColor.DARK_RED}[War] ${event.player.name} is attacking ${townAttacked.name} at (${block.x}, ${block.y}, ${block.z})")
+                                    Message.broadcast(
+                                        "${ChatColor.DARK_RED}[War] ${event.player.name} is liberating ${townAttacked.name} at (${block.x}, ${block.y}, ${block.z})",
+                                    )
+                                } else {
+                                    Message.broadcast(
+                                        "${ChatColor.DARK_RED}[War] ${event.player.name} is attacking ${townAttacked.name} at (${block.x}, ${block.y}, ${block.z})",
+                                    )
                                 }
                             } else {
                                 when (result.exceptionOrNull()) {
@@ -239,7 +234,11 @@ public class NodesWorldListener : Listener {
                                     ErrorAlreadyCaptured -> Message.error(player, "[War] Chunk already captured by town or allies")
                                     ErrorTownBlacklisted -> Message.error(player, "[War] Cannot attack this town (blacklisted)")
                                     ErrorTownNotWhitelisted -> Message.error(player, "[War] Cannot attack this town (not whitelisted)")
-                                    ErrorNotEnemy -> Message.error(player, "[War] Not an enemy (for warzones: /war <warzone_town> first)")
+                                    ErrorNotEnemy -> if (raidLive) {
+                                        Message.error(player, "[Raid] Not an enemy chunk")
+                                    } else {
+                                        Message.error(player, "[War] Not an enemy")
+                                    }
                                     ErrorNotBorderTerritory -> Message.error(player, "[War] You can only attack border territories")
                                     ErrorChunkNotEdge -> Message.error(player, "[War] Must attack from territory edge or from captured chunk")
                                     ErrorFlagTooHigh -> Message.error(player, "[War] Flag placement too high, cannot create flag")
@@ -247,23 +246,21 @@ public class NodesWorldListener : Listener {
                                     ErrorTooManyAttacks -> Message.error(player, "[War] You cannot attack any more chunks at the same time")
                                     ErrorAttackCustomCancel -> Message.error(player, "[War] Attack cancelled by another plugin")
                                 }
-
-                                // cancel event
-                                event.setCancelled(true)
+                                event.isCancelled = true
+                                return
                             }
                         } else {
                             Message.error(player, "[War] Cannot claim unless you are part of a town")
-                            event.setCancelled(true)
+                            event.isCancelled = true
                         }
                     } else {
-                        event.setCancelled(true)
+                        event.isCancelled = true
                     }
                 }
             }
         }
 
-        // op bypass
-        if (player.isOp()) {
+        if (player.isOp) {
             return
         }
 
@@ -272,167 +269,144 @@ public class NodesWorldListener : Listener {
         val resident = Nodes.getResident(player)
         val town: Town? = territory?.town
 
-        // interacting in areas with no territory or no town
+        val plotBuild = Plots.allows(player, block, PlotAction.BUILD)
+        if (plotBuild != null) {
+            if (!plotBuild) {
+                event.isCancelled = true
+                Message.error(player, "You cannot build in this plot!")
+                AntiBlockGlitch.recordDenied(player)
+                return
+            }
+            return
+        }
+
         if (town === null) {
             if (hasWildernessPermissions(territory)) {
                 return
             }
-
-            event.setCancelled(true)
+            event.isCancelled = true
             Message.error(player, "You cannot build here!")
-            val chunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
-            if (Config.allowAllInteractsInFlaggedChunks && chunk != null) {
-                if (FlagWar.chunkToAttacker.containsKey(chunk.coord)) {
-                    return // allow interact — do not cancel, do not anti-glitch
-                }
-            }
-            phonon.nodes.util.AntiBlockGlitch.recordDenied(player)
+            AntiBlockGlitch.recordDenied(player)
             return
         }
 
-        // interacting in a town
         if (resident !== null) {
             if (hasTownPermissions(TownPermissions.BUILD, town, resident)) {
                 return
             }
-
-            // territory occupier permissions
             val occupier: Town? = territory.occupier
             if (occupier !== null && hasOccupierPermissions(TownPermissions.BUILD, town, occupier, resident)) {
                 return
             }
-
-            // war permissions
-            if (hasWarPermissions(resident, territory, territoryChunk!!)) {
+            if (territoryChunk != null && hasWarPermissions(resident, territory, territoryChunk)) {
                 return
             }
-
-            // allow placing war flags during global war OR on an active warzone
-            val placeOnWarzone =
-                phonon.nodes.war.Warzone.isAttackableWarzoneTerritory(town)
-            if ((Nodes.war.enabled || placeOnWarzone) && Config.flagMaterials.contains(block.type)) {
+            val placeOnWarzone = Warzone.isAttackableWarzoneTerritory(town)
+            val placeOnRaid = phonon.nodes.war.Raid.isLiveTerritory(territory)
+            if ((Nodes.war.enabled || placeOnWarzone || placeOnRaid) &&
+                Config.flagMaterials.contains(block.type)
+            ) {
                 return
             }
         }
 
-        event.setCancelled(true)
+        event.isCancelled = true
         Message.error(player, "You cannot build here!")
+        AntiBlockGlitch.recordDenied(player)
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public fun onBlockPlaceSuccess(event: BlockPlaceEvent) {
-        if (event.isCancelled()) {
+        if (event.isCancelled) {
             return
         }
-
         val block = event.block
-        val blockMaterial = block.type
-
-        // invalide hidden ore blocks
-        if (Config.oreBlocks.contains(blockMaterial)) {
+        if (Config.oreBlocks.contains(block.type)) {
             Nodes.hiddenOreInvalidBlocks.add(block)
         }
     }
 
     @EventHandler(priority = EventPriority.NORMAL)
     public fun onPlayerBucketEmpty(event: PlayerBucketEmptyEvent) {
-        val block = event.getBlockClicked().getRelative(event.getBlockFace())
+        val block = event.blockClicked.getRelative(event.blockFace)
         val territory: Territory? = Nodes.getTerritoryFromChunk(block.chunk)
         val territoryChunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
         val player: Player = event.player
         val resident = Nodes.getResident(player)
         val town: Town? = territory?.town
 
-        // op bypass
-        if (player.isOp()) {
+        if (player.isOp) {
             return
         }
 
-        // interacting in areas with no territory or no town
+        val plotBucket = Plots.allows(player, block, PlotAction.BUILD)
+        if (plotBucket != null) {
+            if (!plotBucket) {
+                event.isCancelled = true
+                Message.error(player, "You cannot build in this plot!")
+                AntiBlockGlitch.recordDenied(player)
+                return
+            }
+            return
+        }
+
         if (town === null) {
             if (hasWildernessPermissions(territory)) {
                 return
             }
-
-            event.setCancelled(true)
+            event.isCancelled = true
             Message.error(player, "You cannot use buckets here")
+            AntiBlockGlitch.recordDenied(player)
             return
         }
 
-        // interacting in a town
         if (resident !== null) {
             if (hasTownPermissions(TownPermissions.BUILD, town, resident)) {
                 return
             }
-
-            // territory occupier permissions
             val occupier: Town? = territory.occupier
             if (occupier !== null && hasOccupierPermissions(TownPermissions.BUILD, town, occupier, resident)) {
                 return
             }
-
-            // war permissions
-            if (hasWarPermissions(resident, territory, territoryChunk!!)) {
+            if (territoryChunk != null && hasWarPermissions(resident, territory, territoryChunk)) {
                 return
             }
         }
 
-        event.setCancelled(true)
+        event.isCancelled = true
         Message.error(player, "You cannot use buckets here")
+        AntiBlockGlitch.recordDenied(player)
     }
 
-    // handle placing water/lava onto block (can be used to destroy harvest crops)
     @EventHandler(priority = EventPriority.MONITOR)
     public fun onPlayerBucketEmptySuccess(event: PlayerBucketEmptyEvent) {
-        if (event.isCancelled()) {
+        if (event.isCancelled) {
             return
         }
-
-        // gets block where water actually placed
-        val block = event.getBlockClicked().getRelative(event.getBlockFace())
-        val blockMaterial = block.type
-
-        // handle crop harvest
-        if (Config.cropTypes.contains(blockMaterial)) {
+        val block = event.blockClicked.getRelative(event.blockFace)
+        if (Config.cropTypes.contains(block.type)) {
             handleCropHarvest(block)
         }
     }
 
-    // handle fluids moving to block (for water auto-farms)
-    // NOTE: there are edge cases that are not triggered:
-    // - when water falling vertically this is not triggered
-    // just ignoring that because very limited use ingame of vertical water harvesting
     @EventHandler(priority = EventPriority.MONITOR)
     public fun onBlockFromToSuccess(event: BlockFromToEvent) {
-        if (event.isCancelled()) {
+        if (event.isCancelled) {
             return
         }
-
-        val block = event.getToBlock()
-        val blockMaterial = block.type
-
-        // handle crop harvest
-        if (Config.cropTypes.contains(blockMaterial)) {
+        val block = event.toBlock
+        if (Config.cropTypes.contains(block.type)) {
             handleCropHarvest(block)
         }
     }
 
-    // handle pistons breaking block (for auto-farms)
-    // handle harvest tax for any blocks moved by piston event
-    // this only hnadles objects directly moved by piston, not things like
-    // dirt underneath a block
     @EventHandler(priority = EventPriority.MONITOR)
     public fun onPistonExtendSuccess(event: BlockPistonExtendEvent) {
-        if (event.isCancelled()) {
+        if (event.isCancelled) {
             return
         }
-
-        val blockMovedList = event.getBlocks()
-        for (block in blockMovedList) {
-            val blockMaterial = block.type
-
-            // handle crop harvest
-            if (Config.cropTypes.contains(blockMaterial)) {
+        for (block in event.blocks) {
+            if (Config.cropTypes.contains(block.type)) {
                 handleCropHarvest(block)
             }
         }
@@ -447,13 +421,33 @@ public class NodesWorldListener : Listener {
         val player = event.player
         val action = event.action
 
-        // op bypass
-        if (player.isOp()) {
+        if (player.isOp) {
             return
         }
 
-        val block = event.getClickedBlock()
-        if (block === null) {
+        val block = event.clickedBlock ?: return
+        if (phonon.nodes.supply.SupplyDrops.isDropBlock(block)) {
+            return
+        }
+
+        if (FlagWar.blockToAttacker.containsKey(block)) {
+            return
+        }
+
+        val plotInteract = Plots.allows(player, block, PlotAction.INTERACT)
+        if (plotInteract != null) {
+            if (!plotInteract) {
+                event.setUseInteractedBlock(Result.DENY)
+                if (event.hasItem() && event.isBlockInHand) {
+                    event.setUseItemInHand(Result.DENY)
+                } else {
+                    event.setUseItemInHand(Result.DEFAULT)
+                }
+                if (action == Action.RIGHT_CLICK_BLOCK) {
+                    Message.error(player, "You cannot interact in this plot!")
+                }
+                return
+            }
             return
         }
 
@@ -462,92 +456,78 @@ public class NodesWorldListener : Listener {
         val resident = Nodes.getResident(player)
         val town: Town? = territory?.town
 
-        // interacting in areas with no territory or no town
-        // DO NOT USE WILDERNESS PERMISSIONS
-        if (territory === null) {
-            return
-        }
-        if (town === null) {
+        if (territory === null || town === null) {
             return
         }
 
         if (resident !== null) {
-            // ignore if war enabled and item in hand is a flag material
-            if (Nodes.war.enabled && Config.flagMaterials.contains(event.getMaterial()) && action == Action.RIGHT_CLICK_BLOCK) {
-                // dont allow using block
-                val clickedBlock = event.getClickedBlock()
-                if (clickedBlock !== null && INTERACTIVE_BLOCKS.contains(clickedBlock.getType())) {
+            if (Nodes.war.enabled &&
+                Config.flagMaterials.contains(event.material) &&
+                action == Action.RIGHT_CLICK_BLOCK
+            ) {
+                val clickedBlock = event.clickedBlock
+                if (clickedBlock !== null && INTERACTIVE_BLOCKS.contains(clickedBlock.type)) {
+                    if (Config.allowAllInteractsInFlaggedChunks &&
+                        FlagWar.chunkToAttacker.containsKey(territoryChunk?.coord)
+                    ) {
+                        return
+                    }
                     Message.error(player, "You cannot interact here!")
                     event.setUseInteractedBlock(Result.DENY)
-                    val chunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
-                    if (Config.allowAllInteractsInFlaggedChunks && chunk != null) {
-                        if (FlagWar.chunkToAttacker.containsKey(chunk.coord)) {
-                            return // allow interact — do not cancel, do not anti-glitch
-                        }
-                    }
-                    phonon.nodes.util.AntiBlockGlitch.recordDenied(player)
-                    return
                 }
                 return
             }
 
-            // special permissions for using chests, furnaces, etc...
             if (PROTECTED_BLOCKS.contains(block.type)) {
-                // war permissions override
-                if (hasWarPermissions(resident, territory, territoryChunk!!)) {
+                if (territoryChunk != null && hasWarPermissions(resident, territory, territoryChunk)) {
                     return
                 }
-
-                // normal town permissions
                 if (hasTownPermissions(TownPermissions.CHESTS, town, resident)) {
-                    // check if chest protected
                     if (town.protectedBlocks.contains(block) && !hasTownProtectedChestPermissions(town, resident)) {
-                        event.setCancelled(true)
+                        event.isCancelled = true
                         Message.error(player, "This chest is for trusted residents only")
                     }
-
                     return
                 }
-
-                event.setCancelled(true)
-                val clicked = event.clickedBlock
-                if (clicked != null && phonon.nodes.mining.MiningTowers.isTowerBlock(clicked)) {
+                if (phonon.nodes.mining.MiningTowers.isTowerBlock(block)) {
                     return
                 }
+                event.isCancelled = true
                 Message.error(player, "You cannot use chests here!")
                 return
             }
 
-            // general interact permissions
             if (hasTownPermissions(TownPermissions.INTERACT, town, resident)) {
                 return
             }
-
-            // territory occupier permissions
             val occupier: Town? = territory.occupier
             if (occupier !== null && hasOccupierPermissions(TownPermissions.INTERACT, town, occupier, resident)) {
                 return
             }
-
-            // war permissions
-            if (hasWarPermissions(resident, territory, territoryChunk!!)) {
+            if (territoryChunk != null && hasWarPermissions(resident, territory, territoryChunk)) {
                 return
             }
         }
 
-        // allow right-click place of war flag on active warzone / during war
         val item = event.item
-        val warzoneFlag =
-            phonon.nodes.war.Warzone.isAttackableWarzoneTerritory(town)
+        val warzoneFlag = Warzone.isAttackableWarzoneTerritory(town)
         if (item != null &&
             Config.flagMaterials.contains(item.type) &&
-            (Nodes.war.enabled || warzoneFlag)
+            (Nodes.war.enabled || warzoneFlag || phonon.nodes.war.Raid.isLiveTerritory(territory))
         ) {
             return
         }
-        event.setUseInteractedBlock(Result.DENY)
 
-        if (event.isBlockInHand()) {
+        // Refineries and mining towers are public
+        if (phonon.nodes.refinery.Refineries.getByBlock(block) != null) {
+            return
+        }
+        if (phonon.nodes.mining.MiningTowers.isTowerBlock(block)) {
+            return
+        }
+
+        event.setUseInteractedBlock(Result.DENY)
+        if (event.hasItem() && event.isBlockInHand) {
             event.setUseItemInHand(Result.DENY)
         } else {
             event.setUseItemInHand(Result.DEFAULT)
@@ -555,53 +535,31 @@ public class NodesWorldListener : Listener {
 
         if (action == Action.RIGHT_CLICK_BLOCK) {
             Message.error(player, "You cannot interact here!")
-            val clicked = event.clickedBlock
-            if (clicked != null) {
-                // Refineries: public collect GUI only — do not deny / do not message
-                if (phonon.nodes.refinery.Refineries.getByBlock(clicked) != null) {
-                    return
-                }
-                if (phonon.nodes.mining.MiningTowers.isTowerBlock(clicked)) {
-                    return
-                }
-            }
         }
     }
 
-    // disable normal animal interactions (e.g. animal on pressure plate)
     @EventHandler
     public fun onEntityInteract(event: EntityInteractEvent) {
-        val entity = event.getEntity()
-
-        // check if animal has passenger that is player
-        val passengers = entity.getPassengers()
+        val entity = event.entity
         var player: Player? = null
-        for (p in passengers) {
+        for (p in entity.passengers) {
             if (p is Player) {
                 player = p
                 break
             }
         }
 
-        // if player member of town in territory, allow access
         if (player !== null) {
-            // op bypass
-            if (player.isOp()) {
+            if (player.isOp) {
                 return
             }
-
             val block: Block = event.block
             val territory: Territory? = Nodes.getTerritoryFromChunk(block.chunk)
             val territoryChunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
             val resident = Nodes.getResident(player)
             val town: Town? = territory?.town
 
-            // allow interacting in areas with no territory or no town
-            // DO NOT USE WILDERNESS PERMISSIONS
-            if (territory === null) {
-                return
-            }
-            if (town === null) {
+            if (territory === null || town === null) {
                 return
             }
 
@@ -609,53 +567,41 @@ public class NodesWorldListener : Listener {
                 if (hasTownPermissions(TownPermissions.INTERACT, town, resident)) {
                     return
                 }
-
-                // territory occupier permissions
                 val occupier: Town? = territory.occupier
                 if (occupier !== null && hasOccupierPermissions(TownPermissions.INTERACT, town, occupier, resident)) {
                     return
                 }
-
-                // war permissions
-                if (hasWarPermissions(resident, territory, territoryChunk!!)) {
+                if (territoryChunk != null && hasWarPermissions(resident, territory, territoryChunk)) {
                     return
                 }
             }
         }
 
-        event.setCancelled(true)
+        event.isCancelled = true
     }
 
-    /**
-     * Handle entity explosion (i.e. tnt, creeper) and
-     * destroying flag -> stop attack
-     */
     @EventHandler(priority = EventPriority.LOW)
     public fun onEntityExplode(event: EntityExplodeEvent) {
-        // check if explosion allowed
         if (Config.restrictExplosions) {
             if (!Nodes.war.enabled) {
                 if (Config.onlyAllowExplosionsDuringWar) {
-                    event.setCancelled(true)
+                    event.isCancelled = true
                     return
                 }
-            }
-            // war on, check town blacklist/whitelist
-            else {
+            } else {
                 if (Config.warUseWhitelist) {
-                    val chunk = event.entity.getLocation().chunk
+                    val chunk = event.entity.location.chunk
                     val town = Nodes.getTownAtChunkCoord(chunk.x, chunk.z)
                     if (town !== null && !Config.warWhitelist.contains(town.uuid)) {
-                        event.setCancelled(true)
+                        event.isCancelled = true
                         return
                     }
                 }
-
                 if (Config.warUseBlacklist) {
-                    val chunk = event.entity.getLocation().chunk
+                    val chunk = event.entity.location.chunk
                     val town = Nodes.getTownAtChunkCoord(chunk.x, chunk.z)
                     if (town !== null && Config.warBlacklist.contains(town.uuid)) {
-                        event.setCancelled(true)
+                        event.isCancelled = true
                         return
                     }
                 }
@@ -663,57 +609,46 @@ public class NodesWorldListener : Listener {
         }
 
         if (Nodes.war.enabled) {
-            // check if flag destroyed
             for (block in event.blockList()) {
-                // check if chunk under attack
                 val chunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
                 if (chunk?.attacker !== null) {
-                    var attack = FlagWar.blockToAttacker.get(block)
-
-                    // check if block above was flag block (e.g. destroying fence)
+                    var attack = FlagWar.blockToAttacker[block]
                     if (attack === null) {
-                        attack = FlagWar.blockToAttacker.get(block.getRelative(0, 1, 0))
+                        attack = FlagWar.blockToAttacker[block.getRelative(0, 1, 0)]
                     }
-
                     if (attack !== null) {
                         attack.cancel()
-                        Message.broadcast("${ChatColor.GOLD}[War] Attack at (${block.x}, ${block.y}, ${block.z}) stopped by an explosion")
+                        Message.broadcast(
+                            "${ChatColor.GOLD}[War] Attack at (${block.x}, ${block.y}, ${block.z}) stopped by an explosion",
+                        )
                     }
                 }
             }
         }
     }
 
-    /**
-     * Handle block explosion (i.e. end crystals) and
-     * destroying flag -> stop attack
-     */
     @EventHandler(priority = EventPriority.LOW)
     public fun onBlockExplode(event: BlockExplodeEvent) {
-        // check if explosion allowed
         if (Config.restrictExplosions) {
             if (!Nodes.war.enabled) {
                 if (Config.onlyAllowExplosionsDuringWar) {
-                    event.setCancelled(true)
+                    event.isCancelled = true
                     return
                 }
-            }
-            // war on, check town blacklist/whitelist
-            else {
+            } else {
                 if (Config.warUseWhitelist) {
                     val chunk = event.block.chunk
                     val town = Nodes.getTownAtChunkCoord(chunk.x, chunk.z)
                     if (town !== null && !Config.warWhitelist.contains(town.uuid)) {
-                        event.setCancelled(true)
+                        event.isCancelled = true
                         return
                     }
                 }
-
                 if (Config.warUseBlacklist) {
                     val chunk = event.block.chunk
                     val town = Nodes.getTownAtChunkCoord(chunk.x, chunk.z)
                     if (town !== null && Config.warBlacklist.contains(town.uuid)) {
-                        event.setCancelled(true)
+                        event.isCancelled = true
                         return
                     }
                 }
@@ -721,21 +656,18 @@ public class NodesWorldListener : Listener {
         }
 
         if (Nodes.war.enabled) {
-            // check if flag destroyed
             for (block in event.blockList()) {
-                // check if chunk under attack
                 val chunk = Nodes.getTerritoryChunkFromBlock(block.x, block.z)
                 if (chunk?.attacker !== null) {
-                    var attack = FlagWar.blockToAttacker.get(block)
-
-                    // check if block above was flag block (e.g. destroying fence)
+                    var attack = FlagWar.blockToAttacker[block]
                     if (attack === null) {
-                        attack = FlagWar.blockToAttacker.get(block.getRelative(0, 1, 0))
+                        attack = FlagWar.blockToAttacker[block.getRelative(0, 1, 0)]
                     }
-
                     if (attack !== null) {
                         attack.cancel()
-                        Message.broadcast("${ChatColor.GOLD}[War] Attack at (${block.x}, ${block.y}, ${block.z}) stopped by an explosion")
+                        Message.broadcast(
+                            "${ChatColor.GOLD}[War] Attack at (${block.x}, ${block.y}, ${block.z}) stopped by an explosion",
+                        )
                     }
                 }
             }
@@ -743,25 +675,15 @@ public class NodesWorldListener : Listener {
     }
 }
 
-/**
- * Permissions for unclaimed territories or empty areas (no territories)
- */
 private fun hasWildernessPermissions(territory: Territory?): Boolean {
     if (territory !== null && Config.canInteractInUnclaimed) {
         return true
     } else if (Config.canInteractInEmpty) {
         return true
     }
-
     return false
 }
 
-/**
- * Default permissions check for town:
- * perms: town permissions type
- * town: town
- * player: player interacting in town
- */
 private fun hasTownPermissions(perms: TownPermissions, town: Town, player: Resident): Boolean {
     if (town.permissions[perms].contains(PermissionsGroup.TOWN) && player.town === town) {
         return true
@@ -774,29 +696,15 @@ private fun hasTownPermissions(perms: TownPermissions, town: Town, player: Resid
     } else if (town.permissions[perms].contains(PermissionsGroup.OUTSIDER)) {
         return true
     }
-
     return false
 }
 
-/**
- * Permissions check for a town's territory occupied by another town:
- * perms: town permissions type
- * town: town that owns the territory
- * occupier: town that is occupier of the territory
- * player: player interacting in the territory
- */
-private fun hasOccupierPermissions(perms: TownPermissions, town: Town, occupier: Town, player: Resident): Boolean {
-    if (Config.allowControlInOccupiedTownList.contains(town.uuid)) {
-        return hasTownPermissions(perms, occupier, player)
-    } else {
-        return false
-    }
+private fun hasOccupierPermissions(perms: TownPermissions, town: Town, occupier: Town, player: Resident): Boolean = if (Config.allowControlInOccupiedTownList.contains(town.uuid)) {
+    hasTownPermissions(perms, occupier, player)
+} else {
+    false
 }
 
-/**
- * Permissions for town protected chests
- * Currently just returns if player.trusted flag if player in town
- */
 private fun hasTownProtectedChestPermissions(town: Town, player: Resident): Boolean {
     if (player.town === town) {
         if (player === town.leader) {
@@ -807,25 +715,20 @@ private fun hasTownProtectedChestPermissions(town: Town, player: Resident): Bool
             return player.trusted
         }
     }
-
     return false
 }
 
-// bypass permissions and allow all interaction in
-// captured chunks/territories during wartime
 private fun hasWarPermissions(resident: Resident, territory: Territory, territoryChunk: TerritoryChunk): Boolean {
-    val warzoneActive =
-        phonon.nodes.war.Warzone.isAttackableWarzoneTerritory(territory.town)
+    val warzoneActive = Warzone.isAttackableWarzoneTerritory(territory.town)
+    val raidActive = phonon.nodes.war.Raid.isLiveTerritory(territory)
 
-    if (Nodes.war.enabled || warzoneActive) {
+    if (Nodes.war.enabled || warzoneActive || raidActive) {
         val residentTown = resident.town
         val territoryTown = territory.town
 
         if (residentTown !== null) {
-            // extended permissions for allies
             if (Config.warPermissions) {
                 val residentNation = residentTown.nation
-
                 if (territory.occupier === residentTown ||
                     residentTown.allies.contains(territory.occupier) ||
                     territoryChunk.occupier === residentTown ||
@@ -836,7 +739,6 @@ private fun hasWarPermissions(resident: Resident, territory: Territory, territor
                 ) {
                     return true
                 }
-
                 if (residentNation !== null) {
                     if (residentNation === territoryChunk.occupier?.nation ||
                         residentNation === territory.occupier?.nation ||
@@ -845,13 +747,13 @@ private fun hasWarPermissions(resident: Resident, territory: Territory, territor
                         return true
                     }
                 }
-            }
-            // only let town/nation by default
-            else {
-                if (territory.occupier === residentTown || territoryChunk.occupier === residentTown || territoryChunk.attacker === residentTown) {
+            } else {
+                if (territory.occupier === residentTown ||
+                    territoryChunk.occupier === residentTown ||
+                    territoryChunk.attacker === residentTown
+                ) {
                     return true
                 }
-
                 val residentNation = residentTown.nation
                 if (residentNation !== null) {
                     if (residentNation === territoryChunk.occupier?.nation ||
@@ -864,43 +766,31 @@ private fun hasWarPermissions(resident: Resident, territory: Territory, territor
             }
         }
     }
-
     return false
 }
 
-// handle crop harvest and tax event
 private fun handleCropHarvest(block: Block) {
     val blockX = block.location.blockX
     val blockZ = block.location.blockZ
-    val territory = Nodes.getTerritoryFromBlock(blockX, blockZ)
+    val territory = Nodes.getTerritoryFromBlock(blockX, blockZ) ?: return
+    val random = ThreadLocalRandom.current()
 
-    if (territory !== null) {
-        val random = ThreadLocalRandom.current()
-
-        // do tax event check
-        val territoryOccupier = territory.occupier
-        if (territoryOccupier !== null && random.nextDouble() <= Config.taxFarmRate) {
-            val items = block.getDrops()
-            for (itemStack in items) {
-                Nodes.addToIncome(territoryOccupier, itemStack.type, itemStack.amount)
-            }
-
-            block.setType(Material.AIR)
+    val territoryOccupier = territory.occupier
+    if (territoryOccupier !== null && random.nextDouble() <= Config.taxFarmRate) {
+        for (itemStack in block.getDrops()) {
+            Nodes.addToIncome(territoryOccupier, itemStack.type, itemStack.amount)
         }
-        // handle town over max claims penalty
-        else if (Config.overClaimsPenalty && territory.town?.isOverClaimsMax == true) {
-            if (random.nextDouble() < Config.overClaimsMaxPenalty) {
-                block.setType(Material.AIR)
-            }
+        block.type = Material.AIR
+    } else if (Config.overClaimsPenalty && territory.town?.isOverClaimsMax == true) {
+        if (random.nextDouble() < Config.overClaimsMaxPenalty) {
+            block.type = Material.AIR
         }
     }
 }
 
-// handle hidden ore generation during mining
 private fun handleHiddenOre(player: Player, block: Block) {
-    // ignore hidden ore for silk touch tools
     val inMainHand: ItemStack? = player.inventory.itemInMainHand
-    if (inMainHand?.hasItemMeta() == true && inMainHand.enchantments?.containsKey(Enchantment.SILK_TOUCH) == true) {
+    if (inMainHand?.hasItemMeta() == true && inMainHand.enchantments.containsKey(Enchantment.SILK_TOUCH)) {
         return
     }
 
@@ -908,70 +798,48 @@ private fun handleHiddenOre(player: Player, block: Block) {
     val blockZ = block.location.blockZ
     val blockY = block.location.blockY
     val blockWorld = block.world
+    val territory = Nodes.getTerritoryFromBlock(blockX, blockZ) ?: return
+    val random = ThreadLocalRandom.current()
 
-    val territory = Nodes.getTerritoryFromBlock(blockX, blockZ)
+    val territoryTown = territory.town
+    val territoryNation = territoryTown?.nation
+    val playerTown = Nodes.getTownFromPlayer(player)
+    val playerNation = playerTown?.nation
 
-    if (territory !== null) {
-        val random = ThreadLocalRandom.current()
+    if ((Config.allowOreInWilderness && territoryTown === null) ||
+        (territoryTown !== null && territoryTown === playerTown) ||
+        (Config.allowOreInNationTowns && territoryNation !== null && territoryNation === playerNation) ||
+        (Config.allowOreInCaptured && territory.occupier === playerTown)
+    ) {
+        val baseDrops = territory.ores.sample(blockY)
+        val itemDrops = phonon.nodes.mining.MiningBoost.applyToDrops(player, baseDrops) {
+            territory.ores.sample(blockY)
+        }
 
-        val territoryTown = territory.town
-        val territoryNation = territoryTown?.nation
-
-        val playerTown = Nodes.getTownFromPlayer(player)
-        val playerNation = playerTown?.nation
-
-        // conditions allowed for mining ore
-        if ((Config.allowOreInWilderness && territoryTown === null) ||
-            (territoryTown !== null && territoryTown === playerTown) ||
-            (Config.allowOreInNationTowns && territoryNation !== null && territoryNation === playerNation) ||
-            (Config.allowOreInCaptured && territory.occupier === playerTown)
-        ) {
-            val baseDrops = territory.ores.sample(blockY)
-            val itemDrops = phonon.nodes.mining.MiningBoost.applyToDrops(player, baseDrops) {
-                territory.ores.sample(blockY)
+        val territoryOccupier = territory.occupier
+        if (territoryOccupier !== null && random.nextDouble() <= Config.taxMineRate) {
+            for (itemStack in itemDrops) {
+                Nodes.addToIncome(territoryOccupier, itemStack.type, itemStack.amount)
             }
-
-            // do tax event check
-            val territoryOccupier = territory.occupier
-            if (territoryOccupier !== null && random.nextDouble() <= Config.taxMineRate) {
-                for (itemStack in itemDrops) {
-                    Nodes.addToIncome(territoryOccupier, itemStack.type, itemStack.amount)
+        } else {
+            if (Config.overClaimsPenalty && playerTown?.isOverClaimsMax == true) {
+                if (random.nextDouble() < Config.overClaimsMaxPenalty) {
+                    return
                 }
             }
-            // else, drop items normally
-            else {
-                // check if town has claims penalty
-                if (Config.overClaimsPenalty && playerTown?.isOverClaimsMax == true) {
-                    if (random.nextDouble() < Config.overClaimsMaxPenalty) {
-                        return
-                    }
-                }
-
-                for (itemStack in itemDrops) {
-                    blockWorld.dropItem(block.location, itemStack)
-                }
+            for (itemStack in itemDrops) {
+                blockWorld.dropItem(block.location, itemStack)
             }
         }
     }
 }
 
-/**
- * Return if a block is within a war attack flag's no build region
- */
 private fun blockInWarFlagNoBuildRegion(block: Block, attack: Attack): Boolean {
     val x = block.x
     val y = block.y
     val z = block.z
-
-    if (x < attack.noBuildXMin || x > attack.noBuildXMax) {
-        return false
-    }
-    if (y < attack.noBuildYMin || y > attack.noBuildYMax) {
-        return false
-    }
-    if (z < attack.noBuildZMin || z > attack.noBuildZMax) {
-        return false
-    }
-
+    if (x < attack.noBuildXMin || x > attack.noBuildXMax) return false
+    if (y < attack.noBuildYMin || y > attack.noBuildYMax) return false
+    if (z < attack.noBuildZMin || z > attack.noBuildZMax) return false
     return true
 }

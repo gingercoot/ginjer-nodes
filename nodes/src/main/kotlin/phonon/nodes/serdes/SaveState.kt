@@ -5,13 +5,10 @@
 package phonon.nodes.serdes
 
 interface SaveState {
-    // json string, lazily created
     public var jsonString: String?
 
-    // create the json string
     public fun createJsonString(): String
 
-    // memoized access to json string
     public fun toJsonString(): String {
         val jsonString = this.jsonString
         if (jsonString === null) {

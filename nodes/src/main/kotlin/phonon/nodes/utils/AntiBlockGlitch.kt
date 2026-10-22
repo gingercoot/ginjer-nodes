@@ -50,10 +50,10 @@ object AntiBlockGlitch {
                 // Spin for the full punishment duration (same as darkness/poison)
                 val plugin = phonon.nodes.Nodes.plugin
                 if (plugin != null) {
-                    val durationTicks = ticks // already: Config.antiBlockGlitchDurationTicks.coerceAtLeast(1)
-                    val period = 2L // spin every 2 ticks
+                    val durationTicks = ticks
+                    val period = 2L
                     val maxSteps = (durationTicks / period).toInt().coerceAtLeast(1)
-                    // full turns over the whole duration (adjust 2.0 for more/fewer spins)
+                    // 3 full turns over the whole duration
                     val degreesPerStep = (360f * 3.0f) / maxSteps
 
                     var steps = 0

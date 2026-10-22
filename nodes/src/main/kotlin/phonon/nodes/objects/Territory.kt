@@ -16,28 +16,18 @@ import phonon.nodes.Message
 import java.util.EnumMap
 import kotlin.math.max
 
-/**
- * Wrapper type for territory id int.
- */
 @JvmInline
 value class TerritoryId(private val id: Int) {
     override fun toString(): String = id.toString()
     fun toInt(): Int = id
 }
 
-/**
- * Wrapper type for list of territory ids as IntArray backing.
- * Used to describe territory neighbor id sets.
- * However, does not
- */
+/** Territory ids backed by an IntArray (used for neighbor sets). */
 @JvmInline
 value class TerritoryIdArray(private val ids: IntArray) {
     override fun toString(): String = ids.toString()
     fun toIntArray(): IntArray = ids.copyOf()
 
-    /**
-     * Return true if this territory id array contains given territory id.
-     */
     fun contains(id: TerritoryId): Boolean {
         for (i in ids) {
             if (id == TerritoryId(i)) {
@@ -47,14 +37,8 @@ value class TerritoryIdArray(private val ids: IntArray) {
         return false
     }
 
-    /**
-     * Return iterator over territory ids.
-     */
     operator fun iterator(): TerritoryIdIterator = TerritoryIdIterator(ids.iterator())
 
-    /**
-     * Wrapper iterator to emit TerritoryId instead of int.
-     */
     public class TerritoryIdIterator(val intIter: IntIterator) : Iterator<TerritoryId> {
         override fun hasNext(): Boolean = intIter.hasNext()
         override fun next(): TerritoryId = TerritoryId(intIter.nextInt())
@@ -105,14 +89,12 @@ data class TerritoryPreprocessing(
          * Note this will cause error if json is invalid.
          */
         public fun fromJson(id: Int, json: JsonObject): TerritoryPreprocessing {
-            // territory name
             val name: String = json.get("name")?.getAsString() ?: ""
 
             // territory color, 6 possible colors -> integer in range [0, 5]
             // if null (editor error?), assign 5, the least likely color
             val color: Int = json.get("color")?.getAsInt() ?: 5
 
-            // core chunk (required)
             val coreChunkArray = json.get("coreChunk")!!.getAsJsonArray()!!
             val coreChunk = Coord(coreChunkArray[0].getAsInt(), coreChunkArray[1].getAsInt())
 
@@ -128,7 +110,6 @@ data class TerritoryPreprocessing(
                 }
             }
 
-            // resource nodes
             val resourceNodes: MutableList<String> = mutableListOf()
             val jsonNodesArray = json.get("nodes")?.getAsJsonArray()
             if (jsonNodesArray !== null) {
@@ -138,7 +119,6 @@ data class TerritoryPreprocessing(
                 }
             }
 
-            // neighbor territory ids
             val neighbors: MutableList<Int> = mutableListOf()
             val jsonNeighborsArray = json.get("neighbors")?.getAsJsonArray()
             if (jsonNeighborsArray !== null) {
@@ -170,14 +150,12 @@ data class TerritoryPreprocessing(
  * before compiling into a final immutable Territory.
  */
 data class TerritoryResources(
-    // core properties
     val income: EnumMap<Material, Double> = EnumMap<Material, Double>(Material::class.java),
     val incomeSpawnEgg: EnumMap<EntityType, Double> = EnumMap<EntityType, Double>(EntityType::class.java),
     val ores: EnumMap<Material, OreDeposit> = EnumMap<Material, OreDeposit>(Material::class.java),
     val crops: EnumMap<Material, Double> = EnumMap<Material, Double>(Material::class.java),
     val animals: EnumMap<EntityType, Double> = EnumMap<EntityType, Double>(EntityType::class.java),
     val customProperties: HashMap<String, Any> = HashMap(0),
-    // claim time modifier
     val attackerTimeMultiplier: Double = 1.0,
     val defenderTimeMultiplier: Double = 1.0,
     // accumulated neighbor multipliers applied onto THIS TerritoryResources
@@ -190,7 +168,6 @@ data class TerritoryResources(
     val accumulatedNeighborOresMultiplier: EnumMap<Material, Double> = EnumMap<Material, Double>(Material::class.java),
     val accumulatedNeighborCropsMultiplier: EnumMap<Material, Double> = EnumMap<Material, Double>(Material::class.java),
     val accumulatedNeighborAnimalsMultiplier: EnumMap<EntityType, Double> = EnumMap<EntityType, Double>(EntityType::class.java),
-    // modifiers for neighbors of this territory
     val neighborIncome: EnumMap<Material, Double>? = null,
     val neighborIncomeSpawnEgg: EnumMap<EntityType, Double>? = null,
     val neighborOres: EnumMap<Material, OreDeposit>? = null,
@@ -251,14 +228,12 @@ data class TerritoryResources(
         var maxAccumulatedNeighborCropsMultiplier = this.accumulatedNeighborCropsMultiplier.clone()
         var maxAccumulatedNeighborAnimalsMultiplier = this.accumulatedNeighborAnimalsMultiplier.clone()
 
-        // income direct addition
         neighbor.neighborIncome?.forEach { (type, amount) ->
             newIncome[type] = newIncome.getOrDefault(type, 0.0) + amount
         }
         neighbor.neighborIncomeSpawnEgg?.forEach { (type, amount) ->
             newIncomeSpawnEgg[type] = newIncomeSpawnEgg.getOrDefault(type, 0.0) + amount
         }
-        // income multiplier
         neighbor.neighborTotalIncomeMultiplier?.let { multiplier ->
             maxAccumulatedNeighborTotalIncomeMultiplier = max(multiplier, maxAccumulatedNeighborTotalIncomeMultiplier)
         }
@@ -273,7 +248,6 @@ data class TerritoryResources(
             }
         }
 
-        // ore direct addition
         neighbor.neighborOres?.forEach { (type, ore) ->
             if (newOres.containsKey(type)) {
                 val oreDeposit = newOres[type]!!
@@ -282,7 +256,6 @@ data class TerritoryResources(
                 newOres[type] = ore.copy()
             }
         }
-        // ores multiplier
         neighbor.neighborTotalOresMultiplier?.let { multiplier ->
             maxAccumulatedNeighborTotalOresMultiplier = max(multiplier, maxAccumulatedNeighborTotalOresMultiplier)
         }
@@ -292,11 +265,9 @@ data class TerritoryResources(
             }
         }
 
-        // crops direct addition
         neighbor.neighborCrops?.forEach { (type, amount) ->
             newCrops[type] = newCrops.getOrDefault(type, 0.0) + amount
         }
-        // crops multiplier
         neighbor.neighborTotalCropsMultiplier?.let { multiplier ->
             maxAccumulatedNeighborTotalCropsMultiplier = max(multiplier, maxAccumulatedNeighborTotalCropsMultiplier)
         }
@@ -306,11 +277,9 @@ data class TerritoryResources(
             }
         }
 
-        // animals direct addition
         neighbor.neighborAnimals?.forEach { (type, amount) ->
             newAnimals[type] = newAnimals.getOrDefault(type, 0.0) + amount
         }
-        // animals multiplier
         neighbor.neighborTotalAnimalsMultiplier?.let { multiplier ->
             maxAccumulatedNeighborTotalAnimalsMultiplier = max(multiplier, maxAccumulatedNeighborTotalAnimalsMultiplier)
         }
@@ -338,9 +307,6 @@ data class TerritoryResources(
         )
     }
 
-    /**
-     * Applies all accumulated neighbor modifiers onto this territory.
-     */
     public fun applyNeighborModifiers(): TerritoryResources {
         val newIncome = this.income.clone()
         val newIncomeSpawnEgg = this.incomeSpawnEgg.clone()
@@ -348,7 +314,6 @@ data class TerritoryResources(
         val newCrops = this.crops.clone()
         val newAnimals = this.animals.clone()
 
-        // income multiplier
         newIncome.forEach { (type, value) ->
             newIncome[type] = value * accumulatedNeighborTotalIncomeMultiplier
         }
@@ -366,7 +331,6 @@ data class TerritoryResources(
             }
         }
 
-        // ores multiplier
         newOres.forEach { (type, oreDeposit) ->
             newOres[type] = oreDeposit.copy(dropChance = oreDeposit.dropChance * accumulatedNeighborTotalOresMultiplier)
         }
@@ -377,7 +341,6 @@ data class TerritoryResources(
             }
         }
 
-        // crops multiplier
         newCrops.forEach { (type, value) ->
             newCrops[type] = value * accumulatedNeighborTotalCropsMultiplier
         }
@@ -387,7 +350,6 @@ data class TerritoryResources(
             }
         }
 
-        // animals multiplier
         newAnimals.forEach { (type, value) ->
             newAnimals[type] = value * accumulatedNeighborTotalAnimalsMultiplier
         }
@@ -428,11 +390,9 @@ data class Territory(
     val crops: EnumMap<Material, Double>,
     val animals: EnumMap<EntityType, Double>,
     val customProperties: HashMap<String, Any> = HashMap(0),
-    // claim time modifier
     val attackerTimeMultiplier: Double,
     val defenderTimeMultiplier: Double,
-    // mutable properties: TODO find way to get rid?
-    var town: Town? = null, // town owner
+    var town: Town? = null,
     var occupier: Town? = null, // town occupier (after being captured in war)
 ) {
     val containsIncome: Boolean
@@ -447,7 +407,6 @@ data class Territory(
         this.animalsCanBreed = animals.size > 0
     }
 
-    // id is forced to be unique by system
     public override fun hashCode(): Int = this.id.toInt()
 
     // Returns territory structural properties (chunks, id, neighbors, etc.)
@@ -464,7 +423,6 @@ data class Territory(
         resourceNodes = this.resourceNodes,
     )
 
-    // print territory info
     public fun printInfo(sender: CommandSender) {
         val town: String = this.town?.name ?: "${ChatColor.GRAY}None"
         val occupier: String = if (this.occupier != null) {
@@ -484,15 +442,15 @@ data class Territory(
         Message.print(sender, "- Chunks${ChatColor.WHITE}: ${this.chunks.size}")
         Message.print(sender, "- Core chunk (x,z)${ChatColor.WHITE}: (${core.x}, ${core.z})")
         Message.print(sender, "- Cost${ChatColor.WHITE}: ${this.cost}")
+        Message.print(sender, "- Borders wasteland${ChatColor.WHITE}: ${if (this.bordersWilderness) "yes" else "no"}")
+        Message.print(sender, "- Neighbors${ChatColor.WHITE}: ${this.neighbors.toIntArray().joinToString(", ")}")
         Message.print(sender, "- Resources:")
         for (name in this.resourceNodes) {
             Message.print(sender, "   - $name")
         }
     }
 
-    // print territory net resources
     public fun printResources(sender: CommandSender) {
-        // print income
         Message.print(sender, "- Income:")
         for ((k, v) in this.income) {
             Message.print(sender, "   - $k: $v")
@@ -501,19 +459,16 @@ data class Territory(
             Message.print(sender, "   - $k: $v")
         }
 
-        // print ore deposits
         Message.print(sender, "- Ore:")
         for (ore in this.ores.ores) {
             Message.print(sender, "   - ${ore.material}: ${String.format("%.5f", ore.dropChance)}, ${ore.minAmount} - ${ore.maxAmount}")
         }
 
-        // print crops
         Message.print(sender, "- Crops:")
         for ((k, v) in this.crops) {
             Message.print(sender, "   - $k: $v")
         }
 
-        // print animals
         Message.print(sender, "- Animals:")
         for ((k, v) in this.animals) {
             Message.print(sender, "   - $k: $v")

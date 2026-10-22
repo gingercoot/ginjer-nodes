@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import phonon.nodes.commands.AllyChatCommand
 import phonon.nodes.commands.AllyCommand
 import phonon.nodes.commands.GlobalChatCommand
+import phonon.nodes.commands.KillShopCommand
 import phonon.nodes.commands.MiningTowerCommand
 import phonon.nodes.commands.NationChatCommand
 import phonon.nodes.commands.NationCommand
@@ -16,16 +17,24 @@ import phonon.nodes.commands.NodesAdminCommand
 import phonon.nodes.commands.NodesCommand
 import phonon.nodes.commands.PeaceCommand
 import phonon.nodes.commands.PlayerCommand
+import phonon.nodes.commands.PlotCommand
 import phonon.nodes.commands.PortCommand
+import phonon.nodes.commands.RaidCommand
 import phonon.nodes.commands.RefineryCommand
 import phonon.nodes.commands.StatsCommand
+import phonon.nodes.commands.SupplyDropCommand
 import phonon.nodes.commands.TerritoryCommand
 import phonon.nodes.commands.TownChatCommand
 import phonon.nodes.commands.TownCommand
 import phonon.nodes.commands.TruceCommand
 import phonon.nodes.commands.UnallyCommand
+import phonon.nodes.commands.VassalCommand
 import phonon.nodes.commands.WarCommand
 import phonon.nodes.commands.WarzoneCommand
+import phonon.nodes.fortify.FortTreasuryListener
+import phonon.nodes.fortify.Fortifications
+import phonon.nodes.killshop.KillShop
+import phonon.nodes.killshop.KillShopGuiListener
 import phonon.nodes.listeners.AntiBlockGlitchListener
 import phonon.nodes.listeners.DisabledWorldListener
 import phonon.nodes.listeners.MiningTowerListener
@@ -46,52 +55,48 @@ import phonon.nodes.listeners.NodesPlayerMoveListener
 import phonon.nodes.listeners.NodesSheepShearListener
 import phonon.nodes.listeners.NodesWarFlagArmorStandListener
 import phonon.nodes.listeners.NodesWorldListener
+import phonon.nodes.listeners.NodesXcDamageListener
+import phonon.nodes.listeners.PlotSelectListener
 import phonon.nodes.listeners.RefineryListener
 import phonon.nodes.listeners.StatsListener
 import phonon.nodes.listeners.WarzoneBossBarListener
 import phonon.nodes.mining.MiningBoost
 import phonon.nodes.mining.MiningTowers
+import phonon.nodes.plot.Plots
 import phonon.nodes.refinery.Refineries
 import phonon.nodes.refinery.RefineryGuiListener
 import phonon.nodes.stats.PlayerStats
+import phonon.nodes.supply.SupplyDropListener
+import phonon.nodes.supply.SupplyDrops
 import phonon.nodes.utils.loadLongFromFile
+import phonon.nodes.vassal.Vassals
+import phonon.nodes.war.Raid
 import phonon.nodes.war.Warzone
 
 public class NodesPlugin : JavaPlugin() {
 
     override fun onEnable() {
-        // measure load time
         val timeStart = System.currentTimeMillis()
 
         val logger = this.getLogger()
         val pluginManager = this.getServer().getPluginManager()
 
-        // initialize nodes
         Nodes.initialize(this)
 
-        // ===================================
-        // save hooks to external plugins
-        // ===================================
-        // dynmap hook, just flag that dynmap exists
         val dynmap = pluginManager.getPlugin("dynmap")
         if (dynmap !== null) {
             Nodes.hookDynmap()
             logger.info("Using Dynmap v${dynmap.getDescription().getVersion()}")
         }
 
-        // ===================================
-        // load config
-        // ===================================
         Nodes.reloadConfig()
 
         Nodes.war.initialize(Config.flagMaterials)
 
-        // try load world
         val pluginPath = Config.pathPlugin
         logger.info("Loading world from: $pluginPath")
         try {
-            if (Nodes.loadWorld() == true) { // successful load
-                // print number of resource nodes and territories loaded
+            if (Nodes.loadWorld() == true) {
                 logger.info("- Resource Nodes: ${Nodes.getResourceNodeCount()}")
                 logger.info("- Territories: ${Nodes.getTerritoryCount()}")
                 logger.info("- Residents: ${Nodes.getResidentCount()}")
@@ -115,7 +120,6 @@ public class NodesPlugin : JavaPlugin() {
             }
         }
 
-        // register listeners
         pluginManager.registerEvents(NodesBlockGrowListener(), this)
         pluginManager.registerEvents(NodesChatListener(), this)
         pluginManager.registerEvents(NodesChestProtectionListener(), this)
@@ -139,8 +143,12 @@ public class NodesPlugin : JavaPlugin() {
         pluginManager.registerEvents(MiningTowerListener(), this)
         pluginManager.registerEvents(AntiBlockGlitchListener(), this)
         pluginManager.registerEvents(WarzoneBossBarListener(), this)
+        NodesXcDamageListener.register(this)
+        pluginManager.registerEvents(PlotSelectListener(), this)
+        pluginManager.registerEvents(KillShopGuiListener(), this)
+        pluginManager.registerEvents(SupplyDropListener(), this)
+        pluginManager.registerEvents(FortTreasuryListener(), this)
 
-        // register commands
         this.getCommand("town")?.setExecutor(TownCommand())
         this.getCommand("nation")?.setExecutor(NationCommand())
         this.getCommand("nodes")?.setExecutor(NodesCommand())
@@ -150,6 +158,9 @@ public class NodesPlugin : JavaPlugin() {
         this.getCommand("war")?.setExecutor(WarCommand())
         this.getCommand("warzone")?.setExecutor(WarzoneCommand())
         this.getCommand("warzone")?.setTabCompleter(WarzoneCommand())
+        val raidCmd = RaidCommand()
+        this.getCommand("raid")?.setExecutor(raidCmd)
+        this.getCommand("raid")?.setTabCompleter(raidCmd)
         this.getCommand("peace")?.setExecutor(PeaceCommand())
         this.getCommand("truce")?.setExecutor(TruceCommand())
         this.getCommand("globalchat")?.setExecutor(GlobalChatCommand())
@@ -169,61 +180,79 @@ public class NodesPlugin : JavaPlugin() {
         this.getCommand("stats")?.setTabCompleter(statsCmd)
         this.getCommand("leaderboard")?.setExecutor(statsCmd)
         this.getCommand("leaderboard")?.setTabCompleter(statsCmd)
-        // override command aliases tab complete if they exist
+        val plotCmd = PlotCommand()
+        this.getCommand("plot")?.setExecutor(plotCmd)
+        this.getCommand("plot")?.setTabCompleter(plotCmd)
+        this.getCommand("p")?.setExecutor(plotCmd)
+        this.getCommand("p")?.setTabCompleter(plotCmd)
+        val ks = KillShopCommand()
+        this.getCommand("killshop")?.setExecutor(ks)
+        this.getCommand("killshop")?.setTabCompleter(ks)
+        val supplyDropCmd = SupplyDropCommand()
+        this.getCommand("supplydrop")?.setExecutor(supplyDropCmd)
+        this.getCommand("supplydrop")?.setTabCompleter(supplyDropCmd)
+        val vassalCmd = VassalCommand()
+        this.getCommand("vassal")?.setExecutor(vassalCmd)
+        this.getCommand("vassal")?.setTabCompleter(vassalCmd)
         this.getCommand("t")?.setTabCompleter(this.getCommand("town")?.getExecutor() as TabCompleter)
         this.getCommand("n")?.setTabCompleter(this.getCommand("nation")?.getExecutor() as TabCompleter)
         this.getCommand("nd")?.setTabCompleter(this.getCommand("nodes")?.getExecutor() as TabCompleter)
         this.getCommand("nda")?.setTabCompleter(this.getCommand("nodesadmin")?.getExecutor() as TabCompleter)
         this.getCommand("gc")?.setTabCompleter(this.getCommand("globalchat")?.getExecutor() as TabCompleter)
-        this.getCommand("p")?.setTabCompleter(this.getCommand("player")?.getExecutor() as TabCompleter)
         this.getCommand("miningtower")?.setExecutor(MiningTowerCommand())
         this.getCommand("miningtower")?.setTabCompleter(MiningTowerCommand())
 
-        // load current income tick
         val currTime = System.currentTimeMillis()
         Nodes.lastBackupTime = loadLongFromFile(Config.pathLastBackupTime) ?: currTime
         Nodes.lastIncomeTime = loadLongFromFile(Config.pathLastIncomeTime) ?: currTime
 
-        // run background schedulers/tasks
         Nodes.saveWorldToDynmap(async = true)
         Nodes.reloadManagers()
 
-        // initialize all players online
         Nodes.initializeOnlinePlayers()
 
-        // set final initialized flag
         Nodes.initialized = true
         Nodes.enabled = true
         Warzone.load()
+        Raid.load()
         MiningBoost.load()
         MiningTowers.load()
         PlayerStats.load()
         Refineries.load()
+        Plots.load()
+        RallyCap.load()
+        KillShop.load()
+        SupplyDrops.load()
+        Vassals.load()
+        Fortifications.load()
 
-        // print load time
         val timeEnd = System.currentTimeMillis()
         val timeLoad = timeEnd - timeStart
         logger.info("Enabled in ${timeLoad}ms")
 
-        // print success message
         logger.info("ginjer is the goat")
     }
 
     override fun onDisable() {
         logger.info("ginjer is the goat but disabled")
         Warzone.shutdown()
+        Raid.shutdown()
         MiningBoost.shutdown()
         MiningTowers.shutdown()
         PlayerStats.shutdown()
         Refineries.shutdown()
+        Plots.shutdown()
+        RallyCap.save()
+        KillShop.shutdown()
+        SupplyDrops.shutdown()
+        Vassals.save()
+        Fortifications.flushOpenTreasuries()
+        Fortifications.save()
 
         Nodes.enabled = false
 
-        // world cleanup
         Nodes.cleanup()
-        // final synchronous save of world
-        // -> only save when world was properly initialized,
-        //    to avoid saving junk empty data when plugin fails load
+        // Don't save if loading failed, or empty data overwrites the save
         if (Nodes.initialized) {
             Nodes.saveWorld(checkIfNeedsSave = false, async = false)
             Nodes.saveTruce(async = false)

@@ -15,7 +15,6 @@ import phonon.nodes.utils.Color
 import java.util.Random
 import java.util.UUID
 
-// random number generator
 private val random = Random()
 
 public class Nation(
@@ -30,22 +29,17 @@ public class Nation(
     val towns: HashSet<Town> = hashSetOf()
     val residents: HashSet<Resident> = hashSetOf()
 
-    // nation's diplomatic relations: allies, enemies, truce
-    // determine who nation can attack during war
     val allies: HashSet<Nation> = hashSetOf()
     val enemies: HashSet<Nation> = hashSetOf()
 
-    // color for displaying on map
     var color: Color
 
-    // json string and memoization flag
     private var saveState: NationSaveState
 
     @Suppress("PropertyName")
     private var _needsUpdate = false
 
     init {
-        // assign random color
         this.color = Color(
             random.nextInt(256),
             random.nextInt(256),
@@ -57,13 +51,9 @@ public class Nation(
 
     public override fun hashCode(): Int = this.uuid.hashCode()
 
-    // prints out nation object info
     public fun printInfo(sender: CommandSender) {
         val leader = this.capital.leader?.name ?: "${ChatColor.GRAY}None"
 
-        // read info out of towns:
-        // - get town names
-        // - get total residents count
         var residents = 0
         val towns = if (this.towns.size > 0) {
             val townNames: ArrayList<String> = arrayListOf()
@@ -134,14 +124,11 @@ public class Nation(
         }
     }
 
-    // function to let client flag this object as dirty
     public fun needsUpdate() {
         this._needsUpdate = true
     }
 
-    // wrapper to return self as savestate
-    // - returns memoized copy if needsUpdate false
-    // - otherwise, parses self
+    // Returns the memoized snapshot unless needsUpdate() was called
     public fun getSaveState(): NationSaveState {
         if (this._needsUpdate) {
             this.saveState = NationSaveState(this)

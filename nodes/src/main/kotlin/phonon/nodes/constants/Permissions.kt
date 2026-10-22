@@ -17,7 +17,6 @@ public enum class PermissionsGroup {
     }
 }
 
-// town permissions categories
 public enum class TownPermissions {
     INTERACT,
     BUILD,
